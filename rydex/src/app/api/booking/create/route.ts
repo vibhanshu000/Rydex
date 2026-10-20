@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
         const session = await auth()
         if (!session?.user?.id) {
             return NextResponse.json(
-                { message: "unauthorize" },
-                { status: 400 }
+                { message: "unauthorized" },
+                { status: 401 }
             )
         }
 
@@ -35,11 +35,26 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             )
         }
- const user=await User.findOne({email:session.user.email})
+        const user = await User.findOne({ email: session.user.email })
+        if (!user) {
+            return NextResponse.json(
+                { message: "user not found" },
+                { status: 404 }
+            )
+        }
+
         const driver = await User.findById(driverId)
         if (!driver) {
             return NextResponse.json(
                 { message: "driver not found" },
+                { status: 404 }
+            )
+        }
+
+        // Verify driver is a partner
+        if (driver.role !== "partner" || (driver.partnerStatus && driver.partnerStatus !== "approved")) {
+            return NextResponse.json(
+                { message: "driver is not an approved partner" },
                 { status: 400 }
             )
         }
@@ -59,39 +74,40 @@ export async function POST(req: NextRequest) {
         }
 
         const booking = await Booking.create({
-            user:  user._id,
-            driver,
+            user: user._id,
+            driver: driverId,
             vehicle: vehicleId,
             pickUpAddress,
             dropAddress,
-
             pickUpLocation,
             dropLocation,
-
             fare,
-
             userMobileNumber: mobileNumber,
             driverMobileNumber: driver.mobileNumber,
-
             bookingStatus: "requested"
         })
 
-        await axios.post(`${process.env.NEXT_PUBLIC_SOCKET_SERVER_URL}/emit`,{
-           event:"new-booking",
-           userId:driverId,
-           data:booking
-        })
+        // Send real-time socket event (non-blocking so socket server downtime won't fail the booking)
+        try {
+            if (process.env.NEXT_PUBLIC_SOCKET_SERVER_URL) {
+                await axios.post(`${process.env.NEXT_PUBLIC_SOCKET_SERVER_URL}/emit`, {
+                    event: "new-booking",
+                    userId: driverId,
+                    data: booking
+                })
+            }
+        } catch (socketError) {
+            console.warn("Socket server notification skipped or unavailable:", socketError instanceof Error ? socketError.message : socketError)
+        }
 
-
- return NextResponse.json(
-                booking,{status:200}
-            )
-
+        return NextResponse.json(
+            booking, { status: 200 }
+        )
 
     } catch (error) {
- return NextResponse.json(
-               {message:`create booking error ${error}`},
-               {status:500}
-            )
+        return NextResponse.json(
+            { message: `create booking error ${error}` },
+            { status: 500 }
+        )
     }
 }

@@ -9,9 +9,11 @@ import dynamic from 'next/dynamic'
 const LiveRideMap=dynamic(() => import("@/components/LiveRideMap"), { ssr: false })
 
 import PanelContent from '@/components/PanelContent'
-import { getSocket } from '@/lib/socket'
+import { getSocket, setSocketIdentity } from '@/lib/socket'
 import CompletedScreen from '@/components/CompletedScreen'
 import { useRouter } from 'next/navigation'
+import { useSelector } from 'react-redux'
+import { RootState } from '@/redux/store'
 
 
 const MAP_STATUS: Record<BookingStatus, "arriving" | "ongoing" | "completed"> = {
@@ -47,8 +49,9 @@ const PAYMENT_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
 };
 
 function page() {
+    const { userData } = useSelector((state: RootState) => state.user)
     const [booking, setBooking] = useState<IBooking | null>(null)
-    const [loading, setLoading] = useState(false)
+    const [loading, setLoading] = useState(true)
     const [driverPos, setDriverPos] = useState<[number, number] | null>(null)
     const [pickUpPos, setPickUpPos] = useState<[number, number] | null>(null)
     const [dropPos, setDropPos] = useState<[number, number] | null>(null)
@@ -59,6 +62,12 @@ function page() {
     const [status, setStatus] = useState("")
     const [chatOpen, setChatOpen] = useState(false)
     const [expanded, setExpanded] = useState(false)
+
+    useEffect(() => {
+        if (userData?._id) {
+            setSocketIdentity(userData._id)
+        }
+    }, [userData?._id])
       
     /* pickup OTP */
 
@@ -80,7 +89,7 @@ function page() {
             console.log(data)
             setOtpMode(true)
         } catch (error: any) {
-            console.log(error.response.data.message)
+            console.log(error?.response?.data?.message ?? error?.message)
         }
     }
     const handleSendDropOtp = async () => {
@@ -94,30 +103,30 @@ function page() {
     const handleVerifyPickUpOtp = async () => {
         setLoadingOtp(true)
         try {
-            const { data } = await axios.post("/api/partner/bookings/otp/pickup/verify", { bookingId: booking?._id, otp })
-           setOtpVerified(true)
-           setLoadingOtp(false)
-           setOtpMode(false)
+            const { data } = await axios.post("/api/partner/bookings/otp/pickup/verify", { bookingId: booking?._id, otp: otp.trim() })
+            setOtpVerified(true)
+            setLoadingOtp(false)
+            setOtpMode(false)
             setStatus("started")
-           setBooking(prev=>prev?{...prev,bookingStatus:"started"}:prev)
+            setBooking(prev=>prev?{...prev,bookingStatus:"started"}:prev)
         } catch (error:any) {
             console.log(error)
-              setLoadingOtp(false)
-            setOtpError(error.response.data.message ?? "Verification failed")
+            setLoadingOtp(false)
+            setOtpError(error.response?.data?.message ?? "Verification failed")
         }
     }
     const handleVerifyDropOtp = async () => {
         setLoadingDropOtp(true)
         try {
-            const { data } = await axios.post("/api/partner/bookings/otp/drop/verify", { bookingId: booking?._id, otp:dropOtp })
+            const { data } = await axios.post("/api/partner/bookings/otp/drop/verify", { bookingId: booking?._id, otp: dropOtp.trim() })
             setLoadingDropOtp(false)
-            setDropOtpMode(true)
+            setDropOtpMode(false)
             setStatus("completed")
             setBooking(prev=>prev?{...prev,bookingStatus:"completed"}:prev)
         } catch (error:any) {
             console.log(error)
-              setLoadingDropOtp(false)
-            setDropOtpError(error.response.data.message ?? "Verification failed")
+            setLoadingDropOtp(false)
+            setDropOtpError(error.response?.data?.message ?? "Verification failed")
         }
     }
 
@@ -126,7 +135,6 @@ function page() {
             setLoading(true)
             try {
                 const { data } = await axios.get("/api/partner/my-active")
-
 
                 if(!data){
                     setLoading(false)
@@ -137,16 +145,37 @@ function page() {
                 console.log(data)
               
                 setStatus(data.bookingStatus)
-                setPickUpPos([data.pickUpLocation.coordinates[1], data.pickUpLocation.coordinates[0]])
-                setDropPos([data.dropLocation.coordinates[1], data.dropLocation.coordinates[0]])
+                if (data.pickUpLocation?.coordinates?.length) {
+                    setPickUpPos([data.pickUpLocation.coordinates[1], data.pickUpLocation.coordinates[0]])
+                }
+                if (data.dropLocation?.coordinates?.length) {
+                    setDropPos([data.dropLocation.coordinates[1], data.dropLocation.coordinates[0]])
+                }
                 setLoading(false)
             } catch (error: any) {
-                console.log(error.response.data.message)
+                console.log(error?.response?.data?.message ?? error?.message)
                 setLoading(false)
             }
         }
         fetch()
     }, [])
+
+    // While awaiting payment, periodically check for customer confirmation
+    useEffect(() => {
+        if (!booking?._id || booking.bookingStatus !== "awaiting_payment") return
+        const interval = setInterval(async () => {
+            try {
+                const { data } = await axios.get("/api/partner/my-active")
+                if (data && data.bookingStatus !== "awaiting_payment") {
+                    setBooking(data)
+                    setStatus(data.bookingStatus)
+                }
+            } catch (err) {
+                console.log(err)
+            }
+        }, 2500)
+        return () => clearInterval(interval)
+    }, [booking?._id, booking?.bookingStatus])
 
     const onChatToggle = () => {
         setChatOpen(prev => !prev)
@@ -176,16 +205,22 @@ function page() {
     }, [booking?._id])
 
     useEffect(() => {
-
         if (!booking?._id) return;
         const socket = getSocket()
         socket.emit("join-ride", booking?._id)
         socket.on("driver-location", ({ latitude, longitude }) => {
             setDriverPos([latitude, longitude])
         })
+        socket.on("ride-status-update", (data: any) => {
+            if (data?.status) {
+                setStatus(data.status)
+                setBooking(prev => prev ? { ...prev, bookingStatus: data.status } : prev)
+            }
+        })
         return () => {
             socket.off("join-ride")
             socket.off("driver-location")
+            socket.off("ride-status-update")
         }
     }, [booking?._id])
     if (loading) {
@@ -211,12 +246,12 @@ function page() {
         )
     }
 
-    const cfg = STATUS_LABEL[booking?.bookingStatus! ?? "confirmed"]
+    const cfg = STATUS_LABEL[booking?.bookingStatus ?? "confirmed"]
     const isActive = ["confirmed", "started"].includes(status)
-    const canChat = booking?.bookingStatus === "confirmed"
+    const canChat = ["confirmed", "started"].includes(status || booking?.bookingStatus || "")
     const displayEta = status === "confirmed" ? etaToPickUp : etaToDrop
     const displayDistance = status === "confirmed" ? distanceToPickUp : distanceToDrop
-    const paymentStatus = PAYMENT_BADGE[booking?.paymentStatus! ?? "pending"]
+    const paymentStatus = PAYMENT_BADGE[booking?.paymentStatus ?? "pending"]
     const panelProps = { isActive, displayDistance, displayEta, cfg, status, booking, paymentStatus, canChat, chatOpen, onChatToggle, currentRole: "driver" }
     return (
         <div className='h-screen w-full bg-zinc-100 flex flex-col lg:flex-row overflow-hidden'>
@@ -225,7 +260,7 @@ function page() {
                     driverLocation={driverPos}
                     pickUpLocation={pickUpPos}
                     dropLocation={dropPos}
-                    mapStatus={MAP_STATUS[booking?.bookingStatus!]}
+                    mapStatus={MAP_STATUS[booking?.bookingStatus ?? "confirmed"]}
                     onStats={({ distanceToPickUp, etaToPickUp, distanceToDrop, etaToDrop }) => {
                         setDistanceToPickUp(distanceToPickUp)
                         setEtaToPickUp(etaToPickUp)
@@ -306,13 +341,14 @@ function page() {
                                         <p className='text-white text-xs font-bold tracking-wide uppercase'>Enter Customer OTP</p>
                                     </div>
                                     <div className='p-4 space-y-3'>
-                                        <p className='text-xs text-zinc-500'>Ask the customer for their 4-digit OTP to start the ride.</p>
+                                        <p className='text-xs text-zinc-500'>Ask the customer for their 6-digit OTP to start the ride.</p>
                                         <div className='flex justify-center'>
                                             <input
                                                 type="text"
+                                                maxLength={6}
                                                 onChange={e => { setOtp(e.target.value.replace(/\D/g, "")); setOtpError(""); }}
-                                                placeholder="· · · ·"
-                                                className="w-48 border-2 border-zinc-200 focus:border-zinc-900 rounded-xl px-4 py-3 text-center text-2xl tracking-[0.5em] font-black outline-none transition-colors"
+                                                placeholder="· · · · · ·"
+                                                className="w-56 border-2 border-zinc-200 focus:border-zinc-900 rounded-xl px-4 py-3 text-center text-2xl tracking-[0.3em] font-black outline-none transition-colors"
                                             />
                                         </div>
                                         {otpError && (
@@ -331,7 +367,7 @@ function page() {
                                             >Cancel</button>
 
                                             <button
-                                                onClick={handleVerifyPickUpOtp} disabled={loadingOtp || otp.length < 4}
+                                                onClick={handleVerifyPickUpOtp} disabled={loadingOtp || otp.length < 6}
                                                 className="flex-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-bold active:scale-[0.97] transition-all"
                                             >
                                                 {loadingOtp ? <span className='flex items-center justify-center gap-2'>Verifying...</span> : <span >Verify OTP</span>}
@@ -371,13 +407,14 @@ function page() {
                                         <p className='text-white text-xs font-bold tracking-wide uppercase'>Enter Customer OTP</p>
                                     </div>
                                     <div className='p-4 space-y-3'>
-                                        <p className='text-xs text-zinc-500'>Ask the customer for their 4-digit OTP to complete the ride.</p>
+                                        <p className='text-xs text-zinc-500'>Ask the customer for their 6-digit OTP to complete the ride.</p>
                                         <div className='flex justify-center'>
                                             <input
                                                 type="text"
+                                                maxLength={6}
                                                 onChange={e => { setDropOtp(e.target.value.replace(/\D/g, "")); setDropOtpError(""); }}
-                                                placeholder="· · · ·"
-                                                className="w-48 border-2 border-zinc-200 focus:border-zinc-900 rounded-xl px-4 py-3 text-center text-2xl tracking-[0.5em] font-black outline-none transition-colors"
+                                                placeholder="· · · · · ·"
+                                                className="w-56 border-2 border-zinc-200 focus:border-zinc-900 rounded-xl px-4 py-3 text-center text-2xl tracking-[0.3em] font-black outline-none transition-colors"
                                             />
                                         </div>
                                         {dropOtpError && (
@@ -396,7 +433,7 @@ function page() {
                                             >Cancel</button>
 
                                             <button
-                                                onClick={handleVerifyDropOtp} disabled={loadingDropOtp || dropOtp.length < 4}
+                                                onClick={handleVerifyDropOtp} disabled={loadingDropOtp || dropOtp.length < 6}
                                                 className="flex-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-bold active:scale-[0.97] transition-all"
                                             >
                                                 {loadingDropOtp ? <span className='flex items-center justify-center gap-2'>Verifying...</span> : <span >Verify OTP</span>}

@@ -14,13 +14,13 @@ export async function GET(
         const session = await auth()
         if (!session || !session.user?.email || session.user.role !== "admin") {
             return Response.json({ message: "unauthorized" }
-                , { status: 400 }
+                , { status: 401 }
             )
         }
 
         await connectDb()
         const partnerId=(await context.params).id
-        const partner=await User.findById(partnerId)
+        const partner = await User.findById(partnerId).select("-password -otp -otpExpiresAt")
 
         if(!partner || partner.role!=="partner"){
             return Response.json(

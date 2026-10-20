@@ -12,16 +12,12 @@ export async function POST(req:NextRequest) {
        await connectDb()
         const session = await auth()
         if (!session || !session.user?.email) {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         const user = await User.findOne({ email: session.user.email })
         if (!user) {
-            return Response.json({ message: "user not found" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "user not found" }, { status: 404 })
         } 
 
         const formdata=await req.formData()
@@ -72,13 +68,11 @@ export async function POST(req:NextRequest) {
         {upsert:true,new:true}
     )
 
-    if(user.partnerOnBoardingSteps<2){
-        user.partnerOnBoardingSteps=2
-    }else{
-        user.partnerOnBoardingSteps=3
+    user.partnerOnBoardingSteps = Math.max(user.partnerOnBoardingSteps || 0, 2)
+    if (user.partnerStatus !== "approved") {
+        user.partnerStatus = "pending"
     }
-    user.partnerStatus="pending"
-    
+
     await user.save()
 
  return Response.json(
@@ -86,10 +80,10 @@ export async function POST(req:NextRequest) {
             )
 
     } catch (error) {
-       
- return Response.json(
-             {message:`partner docs error ${error}`} , { status: 201 }
-            ) 
+        console.error("[partner/onboarding/documents] Error:", error instanceof Error ? error.message : error)
+        return Response.json(
+            { message: "partner docs upload error" }, { status: 500 }
+        )
     }
 }
 

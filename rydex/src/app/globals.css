@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+/* Sleek Apple / Uber style White Background Theme for Maps */
+.white-map-theme {
+  background: #f8fafc !important;
+}
+
+.white-map-theme .leaflet-tile-pane {
+  filter: grayscale(100%) brightness(107%) contrast(90%);
+}
+
+/* Ensure markers, popups, and route lines are not washed out by the tile filter */
+.white-map-theme .leaflet-marker-pane,
+.white-map-theme .leaflet-overlay-pane,
+.white-map-theme .leaflet-popup-pane,
+.white-map-theme .leaflet-control-pane {
+  filter: none !important;
+}
+
+/* Custom styled Zoom Controls */
+.white-map-theme .leaflet-bar {
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+.white-map-theme .leaflet-bar a {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  transition: all 0.15s ease !important;
+}
+
+.white-map-theme .leaflet-bar a:hover {
+  background-color: #f8fafc !important;
+  color: #000000 !important;
+}

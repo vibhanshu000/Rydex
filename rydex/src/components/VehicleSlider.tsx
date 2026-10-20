@@ -1,7 +1,6 @@
 import { Bike, Bus, Car, CarTaxiFront, ChevronLeft, ChevronRight, Sparkles, Truck } from 'lucide-react';
 import React, { useRef, useState } from 'react'
 import { motion } from "motion/react"
-import { div } from 'motion/react-client';
 
 const VEHICLE_CATEGORIES = [
   { title: "All Vehicles", desc: "Browse the full fleet", Icon: CarTaxiFront, tag: "Popular" },

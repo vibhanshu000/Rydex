@@ -1,7 +1,6 @@
 'use client'
 import axios from 'axios'
 import { Send, Sparkles, X } from 'lucide-react'
-import { div } from 'motion/react-client'
 import React, { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from "motion/react"
 import { useSelector } from 'react-redux'
@@ -30,16 +29,19 @@ function RideChat({ currentRole, bookingId, userName, driverName }: any) {
 messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
     },[messages])
     const sendMsg = async () => {
-        const socket=getSocket()
+        const socket = getSocket()
+        const msgText = text.trim()
+        if (!msgText) return
+        setText("")
         try {
             const { data } = await axios.post("/api/chat/send", {
                 sender: currentRole,
-                text,
+                text: msgText,
                 bookingId
             })
-            console.log(data)
-            socket.emit("chat-message",data)
-          
+            setMessages(prev => [...prev, data])
+            socket.emit("chat-message", { bookingId, message: data })
+            setLastMessage(msgText)
         } catch (error) {
             console.log(error)
         }
@@ -51,9 +53,11 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
             })
             console.log(data)
             setMessages(data)
-            setLastMessage(data[0])
-        } catch (error:any) {
-            console.log(error.response.data.message)
+            if (data.length > 0) {
+                setLastMessage(data[data.length - 1]?.text || "")
+            }
+        } catch (error: any) {
+            console.log(error?.response?.data?.message ?? error?.message)
         }
     }
 
@@ -66,14 +70,22 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
         getAllMsgs()
     }, [])
 
-    useEffect(()=>{
-       const socket=getSocket()
-       socket.on("chat-message",(data)=>{
-        setMessages(prev=>[...prev,data])
-       })
+    useEffect(() => {
+        const socket = getSocket()
+        socket.on("chat-message", (incoming: any) => {
+            const msg = incoming?.message || incoming
+            if (msg && (msg.bookingId === bookingId || msg.bookingId?._id === bookingId)) {
+                setMessages(prev => {
+                    if (msg._id && prev.some(m => (m as any)._id === msg._id)) {
+                        return prev
+                    }
+                    return [...prev, msg]
+                })
+            }
+        })
 
-       return ()=>{socket.off("chat-message")}
-    },[])
+        return () => { socket.off("chat-message") }
+    }, [bookingId])
     const getAISuggestions = async () => {
         setAiLoading(true)
         setShowAI(true)
@@ -81,9 +93,7 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
             const { data } = await axios.post("/api/chat/ai-suggestions", {
                 role: currentRole, lastMessage
             })
-          
-            const jsonData=JSON.parse(data)
-         setSuggestions(jsonData.suggestions)
+            setSuggestions(data?.suggestions || [])
             setAiLoading(false)
         } catch (error) {
             console.log(error)
@@ -126,7 +136,7 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
 
                 {messages.length > 0 && (
                     messages.map((m, i) => {
-                        const isMine = m.sender === currentRole
+                        const isMine = m.sender === currentRole || m.sender === (userData as any)?._id?.toString()
                         return (
                             <motion.div
                                 key={i}
@@ -153,7 +163,7 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
 
 
             <AnimatePresence>
-                {showAI && messages.length>0 && (
+                {showAI && (
                     <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
@@ -213,7 +223,6 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
 
             <div className='flex-shrink-0 px-4 pb-4 pt-2 bg-white'>
                 <div className='flex items-center gap-2 bg-zinc-100 rounded-2xl pl-3 pr-1.5 py-1.5'>
-                   {messages.length>0 && (
                     <motion.button
                      whileTap={{ scale: 0.9 }}
             onClick={()=>getAISuggestions()}
@@ -226,7 +235,6 @@ messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
                         <Sparkles size={14}/>
 
                     </motion.button>
-                   )}
 
                    <input 
                    type="text" 

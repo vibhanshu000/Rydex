@@ -6,7 +6,6 @@ import { ArrowLeft, CheckCircle, CircleDashed, Clock, ImageIcon, IndianRupee, Sh
 import { useParams, useRouter } from 'next/navigation'
 import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from "motion/react"
-import { img } from 'motion/react-client'
 import AnimatedCard from '@/components/AnimatedCard'
 interface IVehicle {
     owner: IUser
@@ -33,24 +32,26 @@ function page() {
     const [rejectionReason, setRejectionReason] = useState("")
     const [approveLoading, setApproveLoading] = useState(false)
     const [rejectLoading, setRejectLoading] = useState(false)
-    const [loading,setLoading]=useState()
+    const [loading, setLoading] = useState(true)
     useEffect(() => {
         const load = async () => {
             try {
                 const result = await axios.get(`/api/admin/reviews/vehicle/${id}`)
                 setData(result.data)
             } catch (error: any) {
-                console.log(error.response.data.message ?? error)
+                console.log(error?.response?.data?.message ?? error)
+            } finally {
+                setLoading(false)
             }
         }
         load()
     }, [id])
 
     
-    if (loading) {
+    if (loading || !data) {
         return (
             <div className="min-h-screen grid place-items-center text-gray-500">
-                Loading Partner...
+                Loading Vehicle Details...
             </div>
         )
     }
@@ -90,8 +91,8 @@ try {
                         <ArrowLeft size={18} />
                     </button>
                     <div className='flex-1'>
-                        <div className='font-semibold text-lg'>{data?.owner.name}</div>
-                        <div className='text-xs text-gray-500'>{data?.owner.email}</div>
+                        <div className='font-semibold text-lg'>{data?.owner?.name || "Vehicle Review"}</div>
+                        <div className='text-xs text-gray-500'>{data?.owner?.email || ""}</div>
                     </div>
                     {
                         data?.status === "approved" ? (

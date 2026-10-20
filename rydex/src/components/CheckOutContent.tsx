@@ -3,10 +3,11 @@ import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from "motion/react"
 import { ArrowRight, Banknote, Bike, Car, CheckCircle, Clock, CreditCard, IndianRupee, Loader2, MapPin, Navigation, Shield, Truck, Wallet, XCircle } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { div } from 'motion/react-client';
 import axios from 'axios';
-import Razorpay from 'razorpay';
-import { getSocket } from '@/lib/socket';
+import { getSocket, setSocketIdentity } from '@/lib/socket';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
+
 const VEHICLE_META: any = {
   bike: { label: "Bike", Icon: Bike },
   auto: { label: "Auto", Icon: Car },
@@ -17,9 +18,11 @@ const VEHICLE_META: any = {
 type Status = "idle" | "requested" | "awaiting_payment"
   | "rejected" | "expired" 
   | "payment" | "confirmed";
+
 function CheckOutContent() {
   const router = useRouter()
   const params = useSearchParams()
+  const { userData } = useSelector((state: RootState) => state.user)
   const [pickUp, setPickUp] = useState(params.get("pickUp") || "")
   const [drop, setDrop] = useState(params.get("drop") || "")
   const mobile = params.get("mobile")
@@ -31,7 +34,7 @@ function CheckOutContent() {
   const driverId = params.get("driverId") || ""
   const vehicleId = params.get("vehicleId") || ""
   const fare = params.get("fare") || ""
-  const { Icon, label } = VEHICLE_META[vehicle]
+  const { Icon, label } = VEHICLE_META[vehicle] || { Icon: Car, label: vehicle || "Vehicle" }
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<Status>("idle")
   const [booking, setBooking] = useState<any>()
@@ -63,23 +66,34 @@ function CheckOutContent() {
       setStatus("requested")
     } catch (error: any) {
       setLoading(false)
-      console.log(error.response.data.message)
+      const errorMsg = error?.response?.data?.message || error?.message || "Failed to request booking"
+      console.error("Booking creation error:", errorMsg)
+      alert(errorMsg)
     }
   }
 
-    useEffect(()=>{
-       const socket=getSocket()
-       socket.on("accept-booking",(data)=>{
-        setStatus(data)
-       })
-       socket.on("reject-booking",(data)=>{
-        setStatus(data)
-       })
-       return ()=>{
-          socket.off("accept-booking")
-          socket.off("reject-booking")
-       }
-      },[])
+  useEffect(() => {
+    if (userData?._id) {
+      setSocketIdentity(userData._id)
+    }
+  }, [userData?._id])
+
+  useEffect(() => {
+    const socket = getSocket()
+    const onAccept = async (data: any) => {
+      setStatus("awaiting_payment")
+      await fetchActiveBooking()
+    }
+    const onReject = (data: any) => {
+      setStatus("rejected")
+    }
+    socket.on("accept-booking", onAccept)
+    socket.on("reject-booking", onReject)
+    return () => {
+      socket.off("accept-booking", onAccept)
+      socket.off("reject-booking", onReject)
+    }
+  }, [])
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -102,6 +116,10 @@ function CheckOutContent() {
     })
   }
 
+  useEffect(() => {
+    loadRazorpayScript()
+  }, [])
+
   const handleConfirmPayment = async () => {
     if (!booking || !paymentMethod) return;
     setLoading(true)
@@ -110,15 +128,14 @@ function CheckOutContent() {
       if (paymentMethod == "online") {
         const razorpayLoaded = await loadRazorpayScript()
         if (!razorpayLoaded) {
-          alert("razorpay script failed to load")
+          alert("Razorpay script failed to load. Please try again.")
+          setLoading(false)
+          return
         }
 
         const { data } = await axios.post("/api/payment/create", {
           bookingId: booking._id
         })
-
-
-
 
         const paymentObject = new (window as any).Razorpay({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -128,30 +145,45 @@ function CheckOutContent() {
           description: "Ride Payment",
           order_id: data.orderId,
           handler: async function (response: any) {
-            const { data } = await axios.post("/api/payment/verify", {
-              bookingId: booking._id,
-              ...response
-            })
-            setLoading(false)
+            setLoading(true)
+            try {
+              const { data: verifyData } = await axios.post("/api/payment/verify", {
+                bookingId: booking._id,
+                ...response
+              })
+              setLoading(false)
 
-            if (data.success) {
-              setStatus("confirmed")
-              window.location.href = `/ride/${booking._id}`
+              if (verifyData.success) {
+                setStatus("confirmed")
+                router.replace(`/user/ride/${booking._id}`)
+              }
+            } catch (err) {
+              console.error(err)
+              setLoading(false)
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              // Instantly restore UI and clear spinner when user exits or closes Razorpay modal
+              setLoading(false)
             }
           }
+        })
 
-
-
+        paymentObject.on('payment.failed', function () {
+          setLoading(false)
         })
 
         paymentObject.open()
+        // Modal is now presented; reset button loading state so user is not locked
+        setLoading(false)
 
       } else {
         const { data } = await axios.get(`/api/booking/${booking._id}/confirm`)
         setLoading(false)
         if (data.success) {
           setStatus("confirmed")
-          window.location.href = `/user/ride/${booking._id}`
+          router.replace(`/user/ride/${booking._id}`)
         }
       }
     } catch (error) {
@@ -165,8 +197,17 @@ function CheckOutContent() {
   const fetchActiveBooking = async () => {
     try {
       const { data } = await axios.get("/api/booking/active")
-      setBooking(data.booking)
-      setStatus(data.booking.bookingStatus || data.booking)
+      if (data?.booking && typeof data.booking === "object") {
+        setBooking(data.booking)
+        const bStatus = data.booking.bookingStatus
+        if (bStatus === "confirmed" || bStatus === "started") {
+          router.replace(`/user/ride/${data.booking._id}`)
+          return
+        }
+        setStatus(bStatus || "idle")
+      } else {
+        setStatus(data?.booking || "idle")
+      }
     } catch (error) {
       console.log(error)
     }
@@ -184,6 +225,40 @@ function CheckOutContent() {
   useEffect(() => {
     fetchActiveBooking()
   }, [])
+
+  // Dynamic real-time polling fallback while waiting for driver to accept
+  useEffect(() => {
+    if (status !== "requested") return;
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await axios.get("/api/booking/active")
+        if (data?.booking && typeof data.booking === "object") {
+          const bStatus = data.booking.bookingStatus
+          if (bStatus === "awaiting_payment") {
+            setBooking(data.booking)
+            setStatus("awaiting_payment")
+          } else if (bStatus === "confirmed" || bStatus === "started") {
+            setBooking(data.booking)
+            router.replace(`/user/ride/${data.booking._id}`)
+          } else if (bStatus === "rejected" || bStatus === "expired" || bStatus === "cancelled") {
+            setStatus(bStatus)
+          }
+        }
+      } catch (err) {
+        console.error("Polling active booking error:", err)
+      }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [status, router])
+
+  // Auto-redirect if on confirmed screen
+  useEffect(() => {
+    if (status !== "confirmed" || !booking?._id) return;
+    const timer = setTimeout(() => {
+      router.replace(`/user/ride/${booking._id}`)
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [status, booking?._id, router])
 
   useEffect(() => {
     if (status !== "awaiting_payment") return;
@@ -423,7 +498,7 @@ function CheckOutContent() {
                           <motion.div
                             key={p.id}
                             whileTap={{ scale: 0.97 }}
-                            onClick={() => setPaymentMethod(p.id as any)}
+                            onClick={() => { setPaymentMethod(p.id as any); setLoading(false); }}
                             className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-200 ${active ? "bg-zinc-900 border-zinc-900" : "bg-zinc-50 border-zinc-200 hover:border-zinc-400"
                               }`}
                           >
@@ -521,7 +596,7 @@ initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ dela
                     transition={{ delay: 0.5 }}
                       whileTap={{ scale: 0.97 }} 
                       whileHover={{ scale: 1.03 }}
-                      onClick={() => { window.location.href = `/ride/${booking._id}`; }}
+                      onClick={() => { router.replace(`/user/ride/${booking._id}`); }}
                       className="flex items-center gap-2.5 bg-zinc-900 hover:bg-black text-white font-black text-sm px-8 py-4 rounded-2xl transition-colors shadow-md"
                     >
                       Track Your Ride <ArrowRight size={16}/>

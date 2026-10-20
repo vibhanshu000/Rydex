@@ -9,16 +9,12 @@ export async function POST(req:NextRequest) {
         await connectDb()
         const session = await auth()
         if (!session || !session.user?.email) {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         const user = await User.findOne({ email: session.user.email })
         if (!user) {
-            return Response.json({ message: "user not found" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "user not found" }, { status: 404 })
         } 
 
         const {accountHolder,accountNumber,upi,ifsc,mobileNumber}=await req.json()
@@ -41,10 +37,10 @@ export async function POST(req:NextRequest) {
     )
 
     user.mobileNumber=mobileNumber
-    
-        user.partnerOnBoardingSteps=3
-  
-    user.partnerStatus="pending"
+    user.partnerOnBoardingSteps = Math.max(user.partnerOnBoardingSteps || 0, 3)
+    if (user.partnerStatus !== "approved") {
+        user.partnerStatus = "pending"
+    }
     await user.save()
 
      return Response.json(
@@ -65,16 +61,12 @@ export async function GET(req:NextRequest) {
          await connectDb()
         const session = await auth()
         if (!session || !session.user?.email) {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         const user = await User.findOne({ email: session.user.email })
         if (!user) {
-            return Response.json({ message: "user not found" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "user not found" }, { status: 404 })
         } 
 
          const partnerBank=await PartnerBank.findOne({owner:user._id})
@@ -83,9 +75,7 @@ export async function GET(req:NextRequest) {
                 , { status: 200 }
             )
          }else{
-            return  Response.json({ message: "bank details not found" }
-                , { status: 400 }
-            )
+            return  Response.json({ message: "bank details not found" }, { status: 404 })
          }
     } catch (error) {
         return Response.json({ message: `get partner bank error ${error}` }

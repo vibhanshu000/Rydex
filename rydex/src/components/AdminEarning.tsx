@@ -33,7 +33,7 @@ function AdminEarning() {
     const yesterDay = earningData[earningData.length - 2]
     const delta = today && yesterDay ? today.earnings - yesterDay.earnings : 0
     const deltaPositive = delta >= 0
-    const deltaPct = yesterDay ? Math.abs(Math.round((delta / yesterDay.earnings) * 100)) : 0;
+    const deltaPct = yesterDay && yesterDay.earnings > 0 ? Math.abs(Math.round((delta / yesterDay.earnings) * 100)) : 0;
 
 
     const fmt = (n: number) => {

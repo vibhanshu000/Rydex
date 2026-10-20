@@ -90,12 +90,37 @@ function page() {
         socket.on("driver-location",({latitude,longitude})=>{
             setDriverPos([latitude,longitude])
         })
+        socket.on("ride-status-update", (data: any) => {
+            if (data?.status) {
+                setStatus(data.status)
+                setBooking(prev => prev ? { ...prev, bookingStatus: data.status } : prev)
+            }
+        })
        return ()=>{
         socket.off("join-ride")
         socket.off("driver-location")
-
+        socket.off("ride-status-update")
        }
-    }, [])
+    }, [id])
+
+    // Resilient dynamic polling so status updates (driver OTP verification, completion) appear without refresh
+    useEffect(() => {
+        if (!id || status === "completed" || status === "cancelled") return;
+        const interval = setInterval(async () => {
+            try {
+                const { data } = await axios.post("/api/user/active-ride", { bookingId: id })
+                if (data && data.bookingStatus) {
+                    if (data.bookingStatus !== status) {
+                        setStatus(data.bookingStatus)
+                    }
+                    setBooking(data)
+                }
+            } catch (err) {
+                console.error("Polling user ride status error:", err)
+            }
+        }, 2500)
+        return () => clearInterval(interval)
+    }, [id, status])
 
 
     if (loading) {
@@ -114,12 +139,12 @@ function page() {
             )
         }
 
-    const cfg = STATUS_LABEL[booking?.bookingStatus! ?? "confirmed"]
+    const cfg = STATUS_LABEL[booking?.bookingStatus ?? "confirmed"]
     const isActive = ["confirmed", "started"].includes(status)
-    const canChat = booking?.bookingStatus === "confirmed"
+    const canChat = ["confirmed", "started"].includes(status || booking?.bookingStatus || "")
     const displayEta = status === "confirmed" ? etaToPickUp : etaToDrop
     const displayDistance = status === "confirmed" ? distanceToPickUp : distanceToDrop
-    const paymentStatus = PAYMENT_BADGE[booking?.paymentStatus! ?? "pending"]
+    const paymentStatus = PAYMENT_BADGE[booking?.paymentStatus ?? "pending"]
     const panelProps = { isActive, displayDistance, displayEta, cfg, status, booking, paymentStatus, canChat, chatOpen, onChatToggle, currentRole: "user" }
     return (
         <div className='h-screen w-full bg-zinc-100 flex flex-col lg:flex-row overflow-hidden'>
@@ -128,7 +153,7 @@ function page() {
                     driverLocation={driverPos}
                     pickUpLocation={pickUpPos}
                     dropLocation={dropPos}
-                    mapStatus={MAP_STATUS[booking?.bookingStatus!]}
+                    mapStatus={MAP_STATUS[booking?.bookingStatus ?? "confirmed"]}
                     onStats={({ distanceToPickUp, etaToPickUp, distanceToDrop, etaToDrop }) => {
                         setDistanceToPickUp(distanceToPickUp)
                         setEtaToPickUp(etaToPickUp)

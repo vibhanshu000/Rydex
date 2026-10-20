@@ -4,7 +4,7 @@ import User from "@/models/user.model";
 
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(
+export async function POST(
      req: NextRequest,
     context: { params: Promise<{ id: string }>}
 ) {
@@ -12,7 +12,7 @@ export async function GET(
             const session = await auth()
         if (!session || !session.user?.email || session.user.role !== "admin") {
             return Response.json({ message: "unauthorized" }
-                , { status: 400 }
+                , { status: 401 }
             )
         }
 

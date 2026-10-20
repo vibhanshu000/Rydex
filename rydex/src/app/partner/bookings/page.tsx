@@ -4,7 +4,6 @@ import { IUser } from '@/models/user.model'
 import { IVehicle } from '@/models/vehicle.model'
 import axios from 'axios'
 import { Bike, Calendar, Car, ChevronRightIcon, IndianRupee, Loader2, MapPin, Phone, Truck, User } from 'lucide-react'
-import { div } from 'motion/react-client'
 import React, { useEffect, useState } from 'react'
 import { motion } from "motion/react"
 import { useRouter } from 'next/navigation'
@@ -147,7 +146,7 @@ function page() {
                             <option>completed</option>
                             <option>cancelled</option>
                             <option>rejected</option>
-                            <option>expired"</option>
+                            <option>expired</option>
 
                         </select>
                     </div>
@@ -182,7 +181,7 @@ function page() {
                                             </div>
                                             <div className='flex-1'>
                                                 <div className='flex items-center justify-between'>
-                                                    <h3 className='font-semibold text-gray-900'>{b.user.name.toUpperCase() || "Customer"}</h3>
+                                                    <h3 className='font-semibold text-gray-900'>{b.user?.name?.toUpperCase() || "Customer"}</h3>
                                                     <span
                                                         className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(b.bookingStatus)}`}
                                                     >
@@ -199,9 +198,9 @@ function page() {
 
                                         <div className='px-4 pt-3'>
                                             <div className='bg-gray-50 rounded-lg p-2 flex items-center gap-2'>
-                                                {getVehicleIcon(b.vehicle.type)}
+                                                {getVehicleIcon(b.vehicle?.type)}
                                                 <div className='text-xs text-gray-600'>
-                                                    {b.vehicle.vehicleModel} • {b.vehicle.number || "Not assigned"}
+                                                    {b.vehicle?.vehicleModel || "Vehicle"} • {b.vehicle?.number || "Not assigned"}
                                                 </div>
 
                                             </div>
@@ -252,7 +251,37 @@ function page() {
                                                     }`}>{b.paymentStatus}</span>
 
                                             </div>
-                                        {(b.bookingStatus === "completed" || b.bookingStatus === "confirmed" || b.bookingStatus === "started") && (
+                                        {b.bookingStatus === "requested" && (
+                                            <div className='flex items-center gap-2'>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            await axios.get(`/api/partner/bookings/${(b as any)._id}/accept`)
+                                                            router.push("/partner/active-ride")
+                                                        } catch (err) {
+                                                            console.log(err)
+                                                        }
+                                                    }}
+                                                    className="flex items-center gap-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 rounded-lg transition-colors shadow-xs"
+                                                >
+                                                    Accept
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            await axios.get(`/api/partner/bookings/${(b as any)._id}/reject`)
+                                                            window.location.reload()
+                                                        } catch (err) {
+                                                            console.log(err)
+                                                        }
+                                                    }}
+                                                    className="flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3.5 py-1.5 rounded-lg transition-colors"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        )}
+                                        {(b.bookingStatus === "completed" || b.bookingStatus === "confirmed" || b.bookingStatus === "started" || b.bookingStatus === "awaiting_payment") && (
                                             <div className='flex items-center gap-2'>
                                                 <button
                                             onClick={()=>router.push("/partner/active-ride")}

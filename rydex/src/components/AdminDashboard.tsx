@@ -1,6 +1,6 @@
 'use client'
 import axios from 'axios'
-import { CheckCircle2, Clock, Settings, Truck, User, Users, Video, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, LogOut, Settings, Truck, User, Users, XCircle } from 'lucide-react'
 import Image from 'next/image'
 import React, { useEffect, useState } from 'react'
 import Kpi from './Kpi'
@@ -9,6 +9,8 @@ import { AnimatePresence } from 'motion/react'
 import { motion } from "motion/react"
 import ContentList from './ContentList'
 import AdminEarning from './AdminEarning'
+import { signOut } from 'next-auth/react'
+
 type Stats = {
   totalApprovedPartners: number
   totalPartners: number
@@ -16,12 +18,11 @@ type Stats = {
   totalRejectedPartners: number
 }
 
-type Tab = "partner" | "kyc" | "vehicle"
+type Tab = "partner" | "vehicle"
 function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>("partner")
   const [partnerReviews, setPartnerReviews] = useState<any>()
-  const [pendingkyc, setPendingkyc] = useState<any>()
   const [vehicleReviews, setVehicleReviews] = useState<any>()
   const handleGetData = async () => {
     try {
@@ -33,17 +34,13 @@ function AdminDashboard() {
       console.log(error)
     }
   }
-  const handleGetPendingKYC = async () => {
-    try {
-      const { data } = await axios.get("/api/admin/video-kyc/pending")
-      setPendingkyc(data)
-    } catch (error) {
-      console.log(error)
-    }
+
+  const handleLogOut = async () => {
+    await signOut({ redirect: false })
+    window.location.reload()
   }
 
   useEffect(() => {
-    handleGetPendingKYC()
     handleGetData()
   }, [])
   return (
@@ -52,12 +49,20 @@ function AdminDashboard() {
         <div className='max-w-7xl mx-auto h-16 px-6 flex items-center justify-between'>
           <div className='flex items-center gap-3'>
             <Image src={"/logo.png"} alt='logo' width={44} height={44} priority />
-
           </div>
 
-          <div className='flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-black text-white'>
-            <User size={14} />
-            Admin Dashboard
+          <div className='flex items-center gap-4'>
+            <div className='flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-black text-white'>
+              <User size={14} />
+              Admin Dashboard
+            </div>
+            <button
+              onClick={handleLogOut}
+              className='flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-medium cursor-pointer transition'
+            >
+              <LogOut size={14} />
+              Logout
+            </button>
           </div>
         </div>
       </div>
@@ -81,15 +86,6 @@ function AdminDashboard() {
           </TabButton>
 
           <TabButton
-            active={activeTab == "kyc"}
-            count={pendingkyc?.length ?? 0}
-            icon={<Video size={15} />}
-            onClick={() => setActiveTab("kyc")}
-          >
-            Pending Video KYC
-          </TabButton>
-
-          <TabButton
             active={activeTab == "vehicle"}
             count={vehicleReviews?.length ?? 0}
             icon={<Truck size={15} />}
@@ -108,7 +104,6 @@ function AdminDashboard() {
             className="space-y-3"
           >
 {activeTab=="partner"&& <ContentList data={partnerReviews ?? []} type={"partner"}/>}
-{activeTab=="kyc"&& <ContentList data={pendingkyc ?? []} type={"kyc"}/>}
 {activeTab=="vehicle"&& <ContentList data={vehicleReviews ?? []} type={"vehicle"}/>}
           </motion.div>
         </AnimatePresence>

@@ -8,15 +8,15 @@ export async function GET() {
          const session = await auth()
                 if (!session || !session.user?.email || session.user.role !== "admin") {
                     return Response.json({ message: "unauthorized" }
-                        , { status: 400 }
+                        , { status: 401 }
                     )
                 }
 
-          const partner=await User.find({
-            role:"partner",
-            partnerOnBoardingSteps:4,
-            videoKycStatus:{$in:["pending","in_progress"]}
-          })
+          // H1 + Strip sensitive fields from partner list
+          const partner = await User.find({
+            role: "partner",
+            videoKycStatus: { $in: ["pending", "in_progress"] }
+          }).select("-password -otp -otpExpiresAt")
           return Response.json(
             partner,{status:200}
           )      

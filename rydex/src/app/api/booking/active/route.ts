@@ -15,11 +15,14 @@ export async function GET(req:NextRequest) {
                     )
                 }
 
-          const user=await User.findOne({email:session.user.email})  
-          
-          const booking=await Booking.findOne({
-            user:user._id,
-            bookingStatus:{$in:["requested", "awaiting_payment", "confirmed", "started"]}
+          const user = await User.findOne({ email: session.user.email })
+          if (!user) {
+              return NextResponse.json({ booking: null }, { status: 404 })
+          }
+
+          const booking = await Booking.findOne({
+            user: user._id,
+            bookingStatus: { $in: ["requested", "awaiting_payment", "confirmed", "started"] }
           })
 
           if(!booking){

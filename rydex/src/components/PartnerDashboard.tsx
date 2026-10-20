@@ -3,7 +3,7 @@ import { RootState } from '@/redux/store';
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux';
 import { motion } from "motion/react"
-import { ArrowRight, Check, Clock, Lock, Video } from 'lucide-react';
+import { ArrowRight, Check, Clock, DollarSign, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import RejectionCard from './RejectionCard';
 import StatusCard from './StatusCard';
@@ -12,6 +12,7 @@ import axios from 'axios';
 import PricingModal from './PricingModal';
 import { IVehicle } from '@/models/vehicle.model';
 import PartnerEarning from './PartnerEarning';
+import { getSocket, setSocketIdentity } from '@/lib/socket';
 type Step = {
     id: number,
     title: string,
@@ -25,10 +26,9 @@ const STEPS: Step[] = [
     { id: 2, title: "Documents", route: "/partner/onboarding/documents" },
     { id: 3, title: "Bank", route: "/partner/onboarding/bank" },
     { id: 4, title: "Review" },
-    { id: 5, title: "Video KYC" },
-    { id: 6, title: "Pricing" },
-    { id: 7, title: "Final Review" },
-    { id: 8, title: "Live" },
+    { id: 5, title: "Pricing" },
+    { id: 6, title: "Final Review" },
+    { id: 7, title: "Live" },
 ];
 
 const TOTAL_STEPS = STEPS.length;
@@ -37,7 +37,6 @@ function PartnerDashboard() {
     const [activeStep, setActiveStep] = useState(0)
     const { userData } = useSelector((state: RootState) => state.user)
     const router = useRouter()
-    const [requestLoading,setRequestLoading]=useState(false)
     const [showPricing,setShowPricing]=useState(false)
     const [vehicleData,setVehicleData]=useState<IVehicle | null>(null)
     useEffect(() => {
@@ -55,13 +54,70 @@ function PartnerDashboard() {
             console.log(error)
         }
     }
-    useEffect(()=>{
-      handleGetPricing()
-    },[])
+    const [pendingBookings, setPendingBookings] = useState<any[]>([])
+
+    const fetchPendingRequests = async () => {
+        try {
+            const { data } = await axios.get("/api/partner/bookings/pending")
+            setPendingBookings(data || [])
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
+    const handleAcceptRide = async (id: string) => {
+        try {
+            await axios.get(`/api/partner/bookings/${id}/accept`)
+            router.push("/partner/active-ride")
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
+    const handleRejectRide = async (id: string) => {
+        try {
+            await axios.get(`/api/partner/bookings/${id}/reject`)
+            fetchPendingRequests()
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
+    useEffect(() => {
+        handleGetPricing()
+        if (userData?.role === "partner") {
+            fetchPendingRequests()
+        }
+    }, [userData])
+
+    // Real-time socket listener for incoming ride requests
+    useEffect(() => {
+        if (userData?.role !== "partner") return;
+        if (userData?._id) {
+            setSocketIdentity(userData._id)
+        }
+        const socket = getSocket()
+        const onNewBooking = () => {
+            fetchPendingRequests()
+        }
+        socket.on("new-booking", onNewBooking)
+        return () => {
+            socket.off("new-booking", onNewBooking)
+        }
+    }, [userData?.role, userData?._id])
+
+    // Resilient 3-second polling fallback so requests appear immediately even if socket is dropped
+    useEffect(() => {
+        if (userData?.role !== "partner") return;
+        const interval = setInterval(() => {
+            fetchPendingRequests()
+        }, 3000)
+        return () => clearInterval(interval)
+    }, [userData?.role])
 
     const goToStep = (step: Step) => {
 
-        if(step.id==6 && userData?.partnerStatus==="approved" && userData.videoKycStatus==="approved"){
+        if(step.id==5 && userData?.partnerStatus==="approved"){
             setShowPricing(true)
             return;
         }
@@ -154,58 +210,26 @@ function PartnerDashboard() {
                     )
                 }
 
-
-
                 {
-                    activeStep==5 && (
-                    userData?.videoKycStatus === "approved" ? (
-                        <StatusCard
-                            icon={<Check size={18} />}
-                            title={"video kyc approved"}
-                            desc={"You can now proceed to pricing."}
-                        />
-                    ) :   userData?.videoKycStatus === "rejected" ? (
-                        <RejectionCard
-                            title="Video KYC Rejected"
-                            reason={userData?.videoKycRejectionReason}
-                            actionLabel={requestLoading?"Requesting...":"Request Again"}
-                            onAction={async ()=>{
-                                setRequestLoading(true)
-                              await axios.get("/api/partner/video-kyc/request")
-                              setRequestLoading(false)
-                            }}
-                        />
-                    ):   userData?.videoKycStatus === "in_progress" && userData?.videoKycRoomId ?(
+                    activeStep == 5 && (
                         <ActionCard
-                        icon={<Video size={18}/>}
-                        title={"Admin Started Video KYC"}
-                        button={"Join Call"}
-                        onclick={
-                            ()=>router.push(`/video-kyc/${userData.videoKycRoomId}`)
-                        }
+                            icon={<DollarSign size={18} />}
+                            title={"Set Up Your Pricing"}
+                            desc={"Your documents have been approved by Admin! Click below to configure your pricing."}
+                            button={"Configure Pricing"}
+                            onclick={() => setShowPricing(true)}
                         />
-                    ):
-                    <StatusCard
-                     icon={<Clock size={20} />}
-                     title="Waiting for Admin"
-                      desc="Admin will initiate Video KYC shortly."
-                    />
-                )
-
-                
-            
+                    )
                 }
 
-                
-
-{activeStep==7  && vehicleData?.status=="pending" && (
+{activeStep==6  && vehicleData?.status=="pending" && (
     <StatusCard
      icon={<Clock size={20} />}
         title="Pricing Under Review"
         desc="Admin is reviewing your pricing."
     />
 )}
-{activeStep==7  && vehicleData?.status=="rejected" && (
+{activeStep==6  && vehicleData?.status=="rejected" && (
     <RejectionCard
       title="Pricing Rejected"
         reason={vehicleData.rejectionReason}
@@ -214,21 +238,80 @@ function PartnerDashboard() {
     />
 )}
 
-{activeStep==8 && vehicleData?.status=="approved" && (
-    <motion.div
-    initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-black text-white rounded-3xl p-10 shadow-2xl"
-    >
-        <h2 className='text-2xl font-bold'>
-            🚀 You're Live
-        </h2>
+{(activeStep >= 7 || userData?.partnerStatus === "approved") && vehicleData?.status == "approved" && (
+    <div className="space-y-6">
+        <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-black text-white rounded-3xl p-8 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
+        >
+            <div>
+                <h2 className='text-2xl font-bold'>🚀 You're Live & Ready for Rides</h2>
+                <p className='text-zinc-400 text-sm mt-1'>Incoming customer ride requests will show below in real time.</p>
+            </div>
+            <button onClick={() => router.push("/partner/bookings")} className='bg-white text-black px-6 py-3 rounded-xl font-semibold flex items-center gap-2 hover:bg-zinc-100 transition-colors flex-shrink-0'>
+             View All Bookings <ArrowRight size={16}/>
+            </button>
+        </motion.div>
 
-        <button className='mt-6 bg-white text-black px-6 py-3 rounded-xl font-semibold flex items-center gap-2'>
-         Go to Bookings <ArrowRight size={16}/>
-        </button>
+        {pendingBookings.length > 0 && (
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-3xl p-8 shadow-xl border border-zinc-200"
+            >
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <div className="flex items-center gap-2.5">
+                            <h3 className="text-xl font-black text-zinc-900">Incoming Ride Requests</h3>
+                            <span className="min-w-6 h-6 px-2 bg-zinc-900 text-white text-xs font-black rounded-full inline-flex items-center justify-center">
+                                {pendingBookings.length}
+                            </span>
+                        </div>
+                        <p className="text-xs text-zinc-500 mt-1">{pendingBookings.length} customer request(s) waiting for response</p>
+                    </div>
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+                </div>
 
-    </motion.div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {pendingBookings.map((b) => (
+                        <div key={b._id} className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 space-y-4 shadow-sm hover:shadow-md transition">
+                            <div className="flex items-center justify-between">
+                                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">New Request</span>
+                                <span className="text-base font-black text-zinc-900">₹{b.fare}</span>
+                            </div>
+
+                            <div className="space-y-2 text-xs">
+                                <div>
+                                    <span className="font-bold text-zinc-400 uppercase">Pickup:</span>
+                                    <p className="font-semibold text-zinc-900 text-sm truncate mt-0.5">{b.pickUpAddress}</p>
+                                </div>
+                                <div>
+                                    <span className="font-bold text-zinc-400 uppercase">Drop:</span>
+                                    <p className="font-semibold text-zinc-900 text-sm truncate mt-0.5">{b.dropAddress}</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2 border-t border-zinc-200">
+                                <button
+                                    onClick={() => handleAcceptRide(b._id)}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition shadow-sm"
+                                >
+                                    Accept Ride
+                                </button>
+                                <button
+                                    onClick={() => handleRejectRide(b._id)}
+                                    className="px-4 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-2.5 rounded-xl transition"
+                                >
+                                    Reject
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </motion.div>
+        )}
+    </div>
 )}
 
 

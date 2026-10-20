@@ -1,20 +1,23 @@
-import connectDb from "@/lib/db";
-import ChatMessage from "@/models/chatMessage.model";
 import axios from "axios";
 import { NextRequest, NextResponse } from "next/server";
 
-const geminiUrl=process.env.GEMINI_API_URL!
+const geminiUrl = process.env.GEMINI_API_URL!
 
-export async function POST(req:NextRequest) {
+/**
+ * POST /api/chat/ai-suggestions
+ * M3: Fixed double JSON serialization (was returning a JSON-encoded string, not an object).
+ * M4: Removed unnecessary connectDb() — this route makes no DB queries.
+ */
+export async function POST(req: NextRequest) {
     try {
-        await connectDb()
-        const {lastMessage,role}=await req.json()
-    
-        const prompt=`You are an AI reply suggestion system for a vehicle booking chat app.
+        // M4: No DB queries in this route — connectDb() removed
+        const { lastMessage, role } = await req.json()
+
+        const prompt = `You are an AI reply suggestion system for a vehicle booking chat app.
 
 Generate short, smart, human-like quick reply suggestions based on:
-- ROLE (DRIVER or USER)
-- RECENT_MESSAGE
+- ROLE (${role})
+- RECENT_MESSAGE (${lastMessage || "Hello"})
 
 Rules:
 - Return exactly 3 suggestions
@@ -33,35 +36,40 @@ Output format:
     "Reply 3"
   ]
 }
+`
 
-Input:
-ROLE:${role}
-RECENT_MESSAGE: ${lastMessage}`
+        let suggestions = ["I'm on my way!", "What is your location?", "Thank you!"];
+        try {
+            const response = await axios.post(geminiUrl, {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ]
+            })
 
-        const response=await axios.post(geminiUrl,{
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": `${prompt}`
-          }
-        ]
-      }
-    ]
-  })
+            const rawText = response.data.candidates[0].content.parts[0].text
+            const cleanedText = rawText.replace(/```json/g, "").replace(/```/g, "").trim()
+            const parsed = JSON.parse(cleanedText)
+            if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+                suggestions = parsed.suggestions
+            }
+        } catch (apiErr) {
+            console.error("[ai-suggestions] Gemini API error, using defaults:", apiErr instanceof Error ? apiErr.message : apiErr)
+        }
 
-  const suggestions=response.data.candidates[0].content.parts[0].text
+        // M3: Fixed — was NextResponse.json(JSON.stringify({suggestions})) which double-serialized
+        return NextResponse.json({ suggestions }, { status: 200 })
 
-   return NextResponse.json(
-            suggestions,
-            {status:200}
-        )
-       
     } catch (error) {
-        console.log(error)
-          return NextResponse.json(
-            {message:`get ai suggestions  error ${error}`},
-            {status:500}
+        console.error("[ai-suggestions] Error:", error instanceof Error ? error.message : error)
+        return NextResponse.json(
+            { message: "get ai suggestions error" },
+            { status: 500 }
         )
     }
 }

@@ -93,12 +93,12 @@ function LiveRideMap({ driverLocation, dropLocation, pickUpLocation, mapStatus,o
                         pLat,
                         pLon
                     )
- console.log(pickUpRoute)
+                    console.log(pickUpRoute)
                     const dropRoute = await getRoute(
+                        pLat,
+                        pLon,
                         dLat,
-                        dLon,
-                        drLat,
-                        drLon
+                        dLon
                     )
 
                     if (pickUpRoute) {
@@ -115,16 +115,14 @@ function LiveRideMap({ driverLocation, dropLocation, pickUpLocation, mapStatus,o
                   etaToDrop:(dropRoute?.duration??0)/60
                 })
 
-
-
                 }else{
                     setRouteToPickUp([])
                     
                     const dropRoute = await getRoute(
-                        dLat,
-                        dLon,
                         drLat,
-                        drLon
+                        drLon,
+                        dLat,
+                        dLon
                     )
                       if (dropRoute) {
                         setRouteToDrop(dropRoute.geometry.coordinates.map(([lon, lat]: number[]) => [lat, lon]))
@@ -150,8 +148,9 @@ const showPickUpRoute=mapStatus==="arriving" && routeToPickUp.length>0
 const showDropRoute=mapStatus!="completed" && routeToDrop.length>0
 
     return (
-        <div className='relative h-full w-full bg-zinc-100'>
+        <div className='relative h-full w-full bg-white white-map-theme'>
             <MapContainer
+                className='white-map-theme'
                 style={{ width: "100%", height: "100%" }}
                 center={pickUpLocation as any}
                 zoom={13}
@@ -160,9 +159,10 @@ const showDropRoute=mapStatus!="completed" && routeToDrop.length>0
 
 
                 <TileLayer
-
-                    attribution='&copy; <a href="https://carto.com/">"CARTO"</a> contributors'
-                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png" />
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    maxZoom={19}
+                />
 
 
 

@@ -4,7 +4,6 @@ import { IUser } from '@/models/user.model'
 import { IVehicle } from '@/models/vehicle.model'
 import axios from 'axios'
 import { Bike, Calendar, Car, ChevronRightIcon, IndianRupee, Loader2, MapPin, Phone, Truck, User } from 'lucide-react'
-import { div } from 'motion/react-client'
 import React, { useEffect, useState } from 'react'
 import { motion } from "motion/react"
 import { useRouter } from 'next/navigation'
@@ -183,7 +182,7 @@ function page() {
                                             </div>
                                             <div className='flex-1'>
                                                 <div className='flex items-center justify-between'>
-                                                    <h3 className='font-semibold text-gray-900'>{b.driver.name.toUpperCase() || "Driver"}</h3>
+                                                    <h3 className='font-semibold text-gray-900'>{b.driver?.name?.toUpperCase() || "Driver"}</h3>
                                                     <span
                                                         className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(b.bookingStatus)}`}
                                                     >

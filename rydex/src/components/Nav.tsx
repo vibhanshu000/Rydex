@@ -11,7 +11,7 @@ import { Bike, Car, ChevronRight, LogOut, Menu, Truck, X } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { setUserData } from '@/redux/userSlice'
 import axios from 'axios'
-import { getSocket } from '@/lib/socket'
+import { getSocket, setSocketIdentity } from '@/lib/socket'
 
 function Nav() {
     const pathName = usePathname()
@@ -38,21 +38,29 @@ function Nav() {
         }
     }
 
-    useEffect(()=>{
-       if(userData?.role=="partner"){
-         fetchCount()
-       }
-    },[userData?.role])
-     useEffect(()=>{
-         const socket=getSocket()
-         console.log(socket)
-         socket.on("new-booking",(data)=>{
-          setPendingCount(prev=>prev+1)
-         })
-         return ()=>{
-            socket.off("new-booking")
-         }
-        },[])
+    useEffect(() => {
+        if (userData?.role === "partner") {
+            fetchCount()
+            const interval = setInterval(() => {
+                fetchCount()
+            }, 5000)
+            return () => clearInterval(interval)
+        }
+    }, [userData?.role])
+
+    useEffect(() => {
+        const socket = getSocket()
+        if (userData?._id) {
+            setSocketIdentity(userData._id)
+        }
+        const onNewBooking = () => {
+            fetchCount()
+        }
+        socket.on("new-booking", onNewBooking)
+        return () => {
+            socket.off("new-booking", onNewBooking)
+        }
+    }, [userData?._id])
     return (
         <>
             <motion.div
@@ -70,8 +78,13 @@ function Nav() {
                         {userData?.role == "partner" ? (
                             <>
                                 <Link className="relative text-sm font-medium text-gray-300 hover:text-white transition" href={"/"}>Home</Link>
-                                <Link className="relative text-sm font-medium text-gray-300 hover:text-white transition" href={"/partner/pending-requests"}>Pending Requests
-                                <span className="absolute -top-2 -right-5 w-6 h-6 bg-white text-black text-xs rounded-full flex items-center justify-center font-bold">{pendingCount ?? 0}</span>
+                                <Link className="inline-flex items-center gap-2 text-sm font-medium text-gray-300 hover:text-white transition" href={"/partner/pending-requests"}>
+                                    <span>Pending Requests</span>
+                                    {pendingCount > 0 && (
+                                        <span className="min-w-5 h-5 px-1.5 bg-white text-black text-[11px] font-black rounded-full inline-flex items-center justify-center leading-none shadow-sm">
+                                            {pendingCount}
+                                        </span>
+                                    )}
                                 </Link>
                                 <Link className="relative text-sm font-medium text-gray-300 hover:text-white transition" href={"/partner/bookings"}>Bookings</Link>
                                 <Link className="relative text-sm font-medium text-gray-300 hover:text-white transition" href={"/partner/active-ride"}>Active Ride</Link>
@@ -223,9 +236,14 @@ function Nav() {
 
                                  {userData.role=="partner" && (
                                   <div className='flex flex-col gap-4'>
-                                   <Link className="relative text-sm font-medium text-black hover:text-gray-500 transition flex items-center gap-2" href={"/partner/pending-requests"}><span>Pending Requests</span>
-                                <span className="w-6 h-6 bg-black text-white text-xs rounded-full flex items-center justify-center font-bold">{pendingCount ?? 0}</span>
-                                </Link>
+                                   <Link className="text-sm font-medium text-black hover:text-gray-500 transition inline-flex items-center gap-2" href={"/partner/pending-requests"}>
+                                        <span>Pending Requests</span>
+                                        {pendingCount > 0 && (
+                                            <span className="min-w-5 h-5 px-1.5 bg-black text-white text-[11px] font-black rounded-full inline-flex items-center justify-center leading-none">
+                                                {pendingCount}
+                                            </span>
+                                        )}
+                                   </Link>
                                 <Link className="relative text-sm font-medium text-black hover:text-gray-500 transition" href={"/partner/bookings"}>Bookings</Link>
                                 <Link className="relative text-sm font-medium text-black hover:text-gray-500 transition" href={"/partner/active-ride"}>Active Ride</Link>
                                   </div>

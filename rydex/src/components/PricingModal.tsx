@@ -3,7 +3,6 @@ import { IVehicle } from '@/models/vehicle.model'
 import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from "motion/react"
 import { ImagePlus, IndianRupee } from 'lucide-react'
-import { img } from 'motion/react-client'
 import axios from 'axios'
 import { useRouter } from 'next/navigation'
 type PropsType = {

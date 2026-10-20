@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
           vehicle.status="pending"
           vehicle.rejectionReason=undefined
           await vehicle.save()
-          partner.partnerOnBoardingSteps=6
+          partner.partnerOnBoardingSteps=5
           await partner.save()
 
            return Response.json({ message: "pricing submitted" }

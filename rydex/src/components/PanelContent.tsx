@@ -2,11 +2,9 @@
 import { Bike, Car, Clock, IndianRupee, MessageCircle, Phone, Truck, User } from 'lucide-react'
 import React, { useEffect } from 'react'
 import { AnimatePresence, motion } from "motion/react"
-import { button } from 'motion/react-client'
 import RideChat from './RideChat'
 import { useSelector } from 'react-redux'
 import { RootState } from '@/redux/store'
-import Vehicle from '@/models/vehicle.model'
 
 const getVehicleIcon = (vehicleType?: string) => {
     switch (vehicleType?.toLowerCase()) {
@@ -112,6 +110,24 @@ function PanelContent({ isActive, displayDistance, displayEta, cfg, status, book
                 </motion.div>
             )}
 
+            {currentRole === "user" && (booking?.pickUpOtp || booking?.dropOtp) && (
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="mx-5 lg:mx-6 bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4.5 rounded-2xl shadow-lg flex items-center justify-between"
+                >
+                    <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-widest text-white/80">
+                            {booking.pickUpOtp ? "Your Pickup OTP" : "Your Drop OTP"}
+                        </p>
+                        <p className="text-3xl font-black tracking-[0.2em] font-mono mt-0.5">{booking.pickUpOtp || booking.dropOtp}</p>
+                    </div>
+                    <div className="text-right text-xs font-semibold text-white/90 max-w-[140px] leading-tight">
+                        Share PIN with driver to {booking.pickUpOtp ? "start" : "complete"} trip
+                    </div>
+                </motion.div>
+            )}
+
             <AnimatePresence>
                 {chatOpen && canChat && (
                     <motion.div
@@ -151,7 +167,7 @@ function PanelContent({ isActive, displayDistance, displayEta, cfg, status, book
                     <div className='flex gap-3 p-4 border-b border-zinc-100'>
                         <div className='flex flex-col items-center flex-shrink-0 pt-1'>
                             <div className='w-3 h-3 rounded-full bg-zinc-900 border-2 border-white shadow-sm' />
-                            <div className='w-px bg-zinc-200 mt-1" style={{ height: 20 }} ' />
+                            <div className='w-px bg-zinc-200 mt-1 h-5' />
                         </div>
                         <div className='flex-1 min-w-0'>
                            <p className='text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-0.5'>PickUp</p>
@@ -161,7 +177,7 @@ function PanelContent({ isActive, displayDistance, displayEta, cfg, status, book
                      <div className='flex gap-3 p-4 border-b border-zinc-100'>
                         <div className='flex flex-col items-center flex-shrink-0 pt-1'>
                             <div className='w-3 h-3 rounded-full bg-zinc-900 border-2 border-white shadow-sm' />
-                            <div className='w-px bg-zinc-200 mt-1" style={{ height: 20 }} ' />
+                            <div className='w-px bg-zinc-200 mt-1 h-5' />
                         </div>
                         <div className='flex-1 min-w-0'>
                            <p className='text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-0.5'>Drop</p>

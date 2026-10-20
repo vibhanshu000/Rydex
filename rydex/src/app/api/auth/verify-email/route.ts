@@ -6,18 +6,19 @@ export async function POST(req: Request) {
     try {
         await connectDb()
         const { email, otp } = await req.json()
-        if (!email && !otp) {
+        if (!email || !otp) {
             return Response.json(
-                { message: "email and otp is required" },
+                { message: "email and otp are required" },
                 { status: 400 }
             )
         }
 
-        let user = await User.findOne({ email })
+        const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : email
+        let user = await User.findOne({ email: normalizedEmail })
         if (!user) {
             return Response.json(
                 { message: "user not found" },
-                { status: 400 }
+                { status: 404 }
             )
         }
 

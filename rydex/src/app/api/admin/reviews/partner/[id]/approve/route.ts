@@ -6,26 +6,24 @@ import User from "@/models/user.model"
 
 import { NextRequest } from "next/server"
 
-export async function GET( 
+export async function handleApprove(
     req: NextRequest,
     context: { params: Promise<{ id: string }>}) {
 
         try {
               const session = await auth()
         if (!session || !session.user?.email || session.user.role !== "admin") {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         await connectDb()
-        const partnerId=(await context.params).id
-        const partner=await User.findById(partnerId)
+        const partnerId = (await context.params).id
+        const partner = await User.findById(partnerId)
 
-        if(!partner || partner.role!=="partner"){
+        if (!partner || partner.role !== "partner") {
             return Response.json(
-                {message:"partner not found"},
-                {status:400}
+                { message: "partner not found" },
+                { status: 404 }
             )
         }
 
@@ -47,7 +45,6 @@ export async function GET(
         }
 
         partner.partnerStatus="approved"
-        partner.videoKycStatus="pending"
         partner.partnerOnBoardingSteps=4
         await partner.save()
         partnerDocs.status="approved"
@@ -60,11 +57,11 @@ export async function GET(
         )
 
         } catch (error) {
-            console.log(error)
+            console.error("[admin/reviews/partner/approve] Error:", error instanceof Error ? error.message : error)
            return Response.json(
-           { message:`partner approved error ${error}`},{status:500}
+           { message: "partner approve error"},{status:500}
         ) 
         }
-      
-
 }
+
+export { handleApprove as GET, handleApprove as POST }

@@ -8,21 +8,19 @@ export async function GET() {
           await connectDb()
         const session = await auth()
         if (!session || !session.user?.email) {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         const partner = await User.findOne({ email: session.user.email })
         if (!partner) {
-            return Response.json({ message: "partner not found" }
-                , { status: 400 }
-            )
-        } 
+            return Response.json({ message: "partner not found" }, { status: 404 })
+        }
 
-        if(partner.videoKycStatus!=="rejected"){
-        return Response.json({ message: "you can not send kyc request at this time" }
-                , { status: 400 }
+        const blockedStatuses = ["pending", "in_progress", "approved"]
+        if (blockedStatuses.includes(partner.videoKycStatus)) {
+            return Response.json(
+                { message: `Cannot submit KYC request: current status is ${partner.videoKycStatus}` },
+                { status: 400 }
             )
         }
         partner.videoKycStatus="pending"

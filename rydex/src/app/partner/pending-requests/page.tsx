@@ -4,9 +4,10 @@ import { motion } from "motion/react"
 import axios from 'axios'
 import { BookingStatus,  PaymentStatus } from '@/models/booking.model'
 import { Clock, IndianRupee, Loader2, MapPin, Navigation } from 'lucide-react'
-import { div } from 'motion/react-client'
 import { useRouter } from 'next/navigation'
-import { getSocket } from '@/lib/socket'
+import { getSocket, setSocketIdentity } from '@/lib/socket'
+import { useSelector } from 'react-redux'
+import { RootState } from '@/redux/store'
 
  interface IBooking {
     _id:string
@@ -45,62 +46,74 @@ import { getSocket } from '@/lib/socket'
 }
 
 function page() {
-
+    const { userData } = useSelector((state: RootState) => state.user)
     const [bookings, setBookings] = useState<IBooking[]>([])
     const [loading, setLoading] = useState(false)
-    const router=useRouter()
-    const fetchPendingRequests = async () => {
+    const router = useRouter()
+
+    const fetchPendingRequests = async (showLoading = false) => {
         try {
-            setLoading(true)
+            if (showLoading) setLoading(true)
             const { data } = await axios.get("/api/partner/bookings/pending")
-            setBookings(data)
-            setLoading(false)
+            setBookings(data || [])
+            if (showLoading) setLoading(false)
         } catch (error) {
             console.log(error)
-            setLoading(false)
+            if (showLoading) setLoading(false)
         }
     }
 
-    const handleAccept=async (id:string)=>{
+    const handleAccept = async (id: string) => {
         try {
-           const {data}=await axios.get(`/api/partner/bookings/${id}/accept`) 
-           router.push("/partner/bookings")
-
+            await axios.get(`/api/partner/bookings/${id}/accept`) 
+            router.push("/partner/active-ride")
         } catch (error) {
             console.log(error)
         }
     }
 
-
-
-    const handleReject=async (id:string)=>{
+    const handleReject = async (id: string) => {
         try {
-           const {data}=await axios.get(`/api/partner/bookings/${id}/reject`) 
-           window.location.reload()
+            await axios.get(`/api/partner/bookings/${id}/reject`) 
+            await fetchPendingRequests(false)
         } catch (error) {
             console.log(error)
         }
     }
 
     useEffect(() => {
-        fetchPendingRequests()
+        fetchPendingRequests(true)
+        const interval = setInterval(() => {
+            fetchPendingRequests(false)
+        }, 3000)
+        return () => clearInterval(interval)
     }, [])
 
-    useEffect(()=>{
-     const socket=getSocket()
-     console.log(socket)
-     socket.on("new-booking",(data)=>{
-       setBookings((prev)=>[...prev,data])
-     })
-     return ()=>{
-        socket.off("new-booking")
-     }
-    },[])
+    useEffect(() => {
+        if (userData?._id) {
+            setSocketIdentity(userData._id)
+        }
+        const socket = getSocket()
+        const onNewBooking = () => {
+            fetchPendingRequests(false)
+        }
+        socket.on("new-booking", onNewBooking)
+        return () => {
+            socket.off("new-booking", onNewBooking)
+        }
+    }, [userData?._id])
     return (
         <div className='min-h-screen bg-[#f4f5f7]'>
             <div className='bg-white border-b border-gray-200'>
                 <div className='max-w-6xl mx-auto px-6 py-16'>
-                    <h1 className='text-4xl font-semibold text-gray-900'>Ride Requests</h1>
+                    <div className='flex items-center gap-3'>
+                        <h1 className='text-4xl font-semibold text-gray-900'>Ride Requests</h1>
+                        {bookings.length > 0 && (
+                            <span className='px-3 py-1 bg-zinc-900 text-white text-sm font-black rounded-full'>
+                                {bookings.length}
+                            </span>
+                        )}
+                    </div>
                     <p className='mt-3 text-gray-500 text-lg'> Manage incoming ride requests and respond in real time.</p>
                 </div>
             </div>

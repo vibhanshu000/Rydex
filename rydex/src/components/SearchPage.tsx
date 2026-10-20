@@ -37,23 +37,35 @@ const VEHICLE_META: any = {
 function SearchPage() {
     const router = useRouter()
     const params = useSearchParams()
-    const [pickUp, setPickUp] = useState(params.get("pickup") || "")
+    const [pickUp, setPickUp] = useState(params.get("pickup") || params.get("pickUp") || "")
     const [drop, setDrop] = useState(params.get("drop") || "")
     const [km, setKm] = useState<number>(0)
-    const mobile = params.get("mobile")
-    const pickUpLat = Number(params.get("pickuplat"))
-    const pickUpLon = Number(params.get("pickuplon"))
-    const dropLat = Number(params.get("droplat"))
-    const dropLon = Number(params.get("droplon"))
+    const mobile = params.get("mobile") || ""
+
+    const pLatVal = params.get("pickuplat") || params.get("pickUpLat")
+    const pLonVal = params.get("pickuplon") || params.get("pickUpLon")
+    const dLatVal = params.get("droplat") || params.get("dropLat")
+    const dLonVal = params.get("droplon") || params.get("dropLon")
+
+    const pickUpLat = pLatVal && !isNaN(Number(pLatVal)) && Number(pLatVal) !== 0 ? Number(pLatVal) : undefined
+    const pickUpLon = pLonVal && !isNaN(Number(pLonVal)) && Number(pLonVal) !== 0 ? Number(pLonVal) : undefined
+    const dropLat = dLatVal && !isNaN(Number(dLatVal)) && Number(dLatVal) !== 0 ? Number(dLatVal) : undefined
+    const dropLon = dLonVal && !isNaN(Number(dLonVal)) && Number(dLonVal) !== 0 ? Number(dLonVal) : undefined
+
     const vehicle = params.get("vehicle") || ""
     const [vehicles, setVehicles] = useState<IVehicle[]>([])
     const [loading, setLoading] = useState(false)
     const meta = VEHICLE_META[vehicle]
-    const getNearByVehicles = async (latitude: number, longitude: number, vehicleType: string | null) => {
+
+    const getNearByVehicles = async (latitude?: number, longitude?: number, vehicleType?: string | null) => {
         setLoading(true)
         try {
+            const searchLat = latitude || 28.6139
+            const searchLon = longitude || 77.2090
             const { data } = await axios.post("/api/vehicles/near-by", {
-                latitude, longitude, vehicleType
+                latitude: searchLat,
+                longitude: searchLon,
+                vehicleType
             })
             setVehicles(data)
             setLoading(false)
@@ -65,7 +77,7 @@ function SearchPage() {
 
     useEffect(() => {
         getNearByVehicles(pickUpLat, pickUpLon, vehicle)
-    }, [pickUpLat, pickUpLon, pickUp])
+    }, [pickUpLat, pickUpLon, pickUp, vehicle])
 
     return (
         <div className='min-h-screen bg-zinc-100 text-zinc-900 overflow-x-hidden'>
@@ -83,6 +95,10 @@ function SearchPage() {
                 <SearchMap
                     pickUp={pickUp}
                     drop={drop}
+                    pickUpLat={pickUpLat}
+                    pickUpLon={pickUpLon}
+                    dropLat={dropLat}
+                    dropLon={dropLon}
                     onChange={(p, d) => { setPickUp(p); setDrop(d) }}
                     onDistance={setKm}
                 />
@@ -206,7 +222,7 @@ function SearchPage() {
                                     <Search size={26} className="text-zinc-400" />
                                 </div>
                                 <p className='text-zinc-900 font-bold text-base mb-1'>Vehicles Not Found</p>
-                                <p className='text-zinc-400 text-sm max-w-xs leading-relaxed'>{meta.label || "Vehicle"} drivers are available near your pickup right now.</p>
+                                <p className='text-zinc-400 text-sm max-w-xs leading-relaxed'>{meta?.label || "Vehicle"} drivers are available near your pickup right now.</p>
                                 <motion.button
                                     whileTap={{ scale: 0.95 }}
                                     onClick={() => getNearByVehicles(pickUpLat, pickUpLon, vehicle)}

@@ -5,6 +5,8 @@ import { ArrowLeft, Bike, Car, CheckCircle, ChevronRight, LocateFixed, MapPin, N
 import { useRouter } from 'next/navigation'
 import { vehicleType } from '@/models/vehicle.model'
 import axios from 'axios'
+import dynamic from 'next/dynamic'
+const MapPickerModal = dynamic(() => import('@/components/MapPickerModal'), { ssr: false })
 
 const stepVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -45,75 +47,164 @@ function page() {
   const [locating,setLocating]=useState(false)
   const [pickUpSuggestions,setPickUpSuggestions]=useState<Place[]>([])
     const [dropSuggestions,setDropSuggestions]=useState<Place[]>([])
-  const progress = [!!vehicle, !!(mobile.length == 10), !!pickUp, !!drop].filter(Boolean).length
-  const canContinue=!!(vehicle && mobile && pickUp && drop && pickUpLat && pickUpLon && dropLat && dropLon)
-const searchAddress=async (q:string,setResults:(r:Place[])=>void,restrict?:string | null)=>{
-  try {
-    if(!q || q.trim().length<3 ){
-      setResults([])
-      return;
-    }
-    const {data}=await axios.get("https://api.geoapify.com/v1/geocode/autocomplete", {
-  params: {
-    text: q.trim(),
-    apiKey: process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY,
-    filter: "countrycode:in", // India ke liye fix
-    limit: 5
-  }
-})
-    console.log(data)
-    let results:Place[]=(data.features ?? []).map((f:any)=>({
-    id:String(f.properties.osm_id),
-    name:f.properties.name,
-  city: f.properties.city, 
-  state: f.properties.state,
-  country: f.properties.country, 
-  countrycode: f.properties.countrycode,
-  lat: f.geometry.coordinates[1],
-  lng: f.geometry.coordinates[0]
-    }))
-    if(restrict){
-      results=results.filter(r=>r.country==restrict)
-    }
-    setResults(results)
-  } catch (error) {
-    console.log(error)
-     setResults([])
-  }
-}
+  const [pickerMode, setPickerMode] = useState<'pickup' | 'drop' | null>(null)
+  const progress = [!!vehicle, !!(mobile.length >= 10), !!pickUp.trim(), !!drop.trim()].filter(Boolean).length
+  const canContinue = !!(vehicle && mobile.length >= 10 && pickUp.trim() && drop.trim())
 
- const suggestion=(p:Place)=>[p.name,p.city,p.state,p.country].filter(Boolean).join(",")
- 
-
-  const useCurrentLocation=()=>{
-     if(!navigator.geolocation) return;
-     setLocating(true)
-     navigator.geolocation.getCurrentPosition(async ({coords})=>{
-       try {
-        const {data}=await axios.get("https://api.geoapify.com/v1/geocode/reverse",{
-          params:{
-            lat:coords.latitude,
-            lon:coords.longitude,
-            apiKey:process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY,
-            filter:"countrycode:in"
+  const searchAddress = async (q: string, setResults: (r: Place[]) => void, onAutoMatch?: (p: Place) => void) => {
+    try {
+      if (!q || q.trim().length < 3) {
+        setResults([])
+        return;
+      }
+      let results: Place[] = []
+      try {
+        const { data } = await axios.get("https://api.geoapify.com/v1/geocode/autocomplete", {
+          params: {
+            text: q.trim(),
+            apiKey: process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY,
+            filter: "countrycode:in",
+            limit: 5
           }
         })
-        console.log(data)
-       if(data.features.length){
-        const p=data.features[0].properties
-        const address=[p.name,p.street,p.city,p.state,p.country].filter(Boolean).join(",")
-        setPickUp(address)
-        setPickUpCountry(p.country)
-        setPickUpLat(coords.latitude)
-        setPickUpLon(coords.longitude)
-        setPickUpSuggestions([])
+        results = (data.features ?? []).map((f: any, idx: number) => ({
+          id: String(f.properties.place_id || f.properties.osm_id || idx),
+          name: f.properties.formatted || f.properties.name || f.properties.address_line1 || [f.properties.street, f.properties.city].filter(Boolean).join(", ") || "Location",
+          city: f.properties.city,
+          state: f.properties.state,
+          country: f.properties.country || "India",
+          countrycode: f.properties.countrycode,
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0]
+        }))
+      } catch (err) {
+        console.log("Geoapify autocomplete error:", err)
+      }
+
+      if (results.length === 0) {
+        try {
+          const { data } = await axios.get(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q.trim())}&limit=5`)
+          results = (data ?? []).map((item: any, idx: number) => ({
+            id: String(item.place_id || idx),
+            name: item.display_name,
+            lat: parseFloat(item.lat),
+            lng: parseFloat(item.lon),
+            country: "India"
+          }))
+        } catch (nomErr) {
+          console.log("Nominatim search error:", nomErr)
+        }
+      }
+
+      setResults(results)
+      if (results.length > 0 && onAutoMatch) {
+        onAutoMatch(results[0])
+      }
+    } catch (error) {
+      console.log(error)
+      setResults([])
+    }
+  }
+
+  const suggestion = (p: Place) => {
+    if (p.name && (p.name.includes(p.city || "") || p.name.includes(p.state || ""))) {
+      return p.name
+    }
+    return [p.name, p.city, p.state, p.country].filter(Boolean).join(", ")
+  }
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        let address = ""
+        let country = "India"
+
+        // 1. Try Geoapify
+        const geoKey = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY
+        if (geoKey) {
+          try {
+            const { data } = await axios.get("https://api.geoapify.com/v1/geocode/reverse", {
+              params: {
+                lat: coords.latitude,
+                lon: coords.longitude,
+                apiKey: geoKey,
+                filter: "countrycode:in"
+              },
+              timeout: 4000
+            })
+            if (data?.features?.length) {
+              const p = data.features[0].properties
+              address = p.formatted || [p.name, p.street, p.city, p.state, p.country].filter(Boolean).join(", ")
+              country = p.country || "India"
+            }
+          } catch (error) {
+            console.warn("Geoapify reverse geocoding skipped/failed:", error)
+          }
+        }
+
+        // 2. OpenStreetMap Nominatim fallback
+        if (!address) {
+          try {
+            const nomRes = await axios.get(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}`,
+              {
+                headers: { 'Accept-Language': 'en' },
+                timeout: 5000
+              }
+            )
+            if (nomRes.data?.display_name) {
+              address = nomRes.data.display_name
+            }
+          } catch (nomErr) {
+            console.warn("Nominatim reverse error:", nomErr)
+          }
+        }
+
+        if (address) {
+          setPickUp(address)
+          setPickUpCountry(country)
+          setPickUpLat(coords.latitude)
+          setPickUpLon(coords.longitude)
+          setPickUpSuggestions([])
+        }
         setLocating(false)
-       }
-       } catch (error) {
-        console.log(error)
+      },
+      (err) => {
+        console.log(err)
         setLocating(false)
-       }
-     })
+      }
+    )
+  }
+
+  const handleContinue = () => {
+    let pLat = pickUpLat
+    let pLon = pickUpLon
+    let dLat = dropLat
+    let dLon = dropLon
+
+    if ((!pLat || !pLon) && pickUpSuggestions.length > 0) {
+      pLat = pickUpSuggestions[0].lat
+      pLon = pickUpSuggestions[0].lng
+    }
+    if ((!dLat || !dLon) && dropSuggestions.length > 0) {
+      dLat = dropSuggestions[0].lat
+      dLon = dropSuggestions[0].lng
+    }
+
+    const query = new URLSearchParams({
+      pickup: pickUp,
+      drop: drop,
+      vehicle: vehicle || "",
+      mobile: mobile,
+      pickuplat: String(pLat || ""),
+      pickuplon: String(pLon || ""),
+      droplat: String(dLat || ""),
+      droplon: String(dLon || "")
+    })
+
+    router.push(`/user/search?${query.toString()}`)
   }
   return (
     <div className='min-h-screen bg-zinc-100 flex items-center justify-center px-4 py-10'>
@@ -284,21 +375,40 @@ const searchAddress=async (q:string,setResults:(r:Place[])=>void,restrict?:strin
 
                     <input
                     onChange={(e)=>{
-                      setPickUp(e.target.value)
-                      searchAddress(e.target.value,setPickUpSuggestions)
+                      const val = e.target.value
+                      setPickUp(val)
+                      searchAddress(val, setPickUpSuggestions, (topMatch) => {
+                        if (!pickUpLat) {
+                          setPickUpLat(topMatch.lat)
+                          setPickUpLon(topMatch.lng)
+                          setPickUpCountry(topMatch.country || "India")
+                        }
+                      })
                     }}
                     value={pickUp}
                       placeholder="Pickup location"
                       className="flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 outline-none"
                     />
-                    <motion.button
-                     whileTap={{ scale: 0.88 }}
-                     onClick={useCurrentLocation}
-                     disabled={locating}
-                      className="w-8 h-8 rounded-xl bg-zinc-200 hover:bg-zinc-300 transition-colors flex items-center justify-center flex-shrink-0"
-                    >
-<LocateFixed size={14} className={`text-zinc-700 ${locating?"animate-spin":""}`} />
-                    </motion.button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <motion.button
+                       whileTap={{ scale: 0.88 }}
+                       onClick={() => setPickerMode('pickup')}
+                       title="Pick Pickup on Map"
+                       className="h-8 px-2.5 rounded-xl bg-zinc-900 text-white hover:bg-black transition-colors flex items-center gap-1.5 text-xs font-bold"
+                      >
+                        <MapPin size={12} />
+                        <span>Map</span>
+                      </motion.button>
+                      <motion.button
+                       whileTap={{ scale: 0.88 }}
+                       onClick={useCurrentLocation}
+                       disabled={locating}
+                       title="Use Current Location"
+                        className="w-8 h-8 rounded-xl bg-zinc-200 hover:bg-zinc-300 transition-colors flex items-center justify-center"
+                      >
+                        <LocateFixed size={14} className={`text-zinc-700 ${locating?"animate-spin":""}`} />
+                      </motion.button>
+                    </div>
 
                   </div>
                   <AnimatePresence>
@@ -308,7 +418,7 @@ const searchAddress=async (q:string,setResults:(r:Place[])=>void,restrict?:strin
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -4, scale: 0.98 }}
                         transition={{ duration: 0.2 }}
-                        className="absolute left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-2xl shadow-xl max-h-28 overflow-y-auto "
+                        className="absolute left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-2xl shadow-xl max-h-56 overflow-y-auto z-30"
                        >
                         {pickUpSuggestions.map((p,i)=>(
                           <motion.div
@@ -347,16 +457,35 @@ const searchAddress=async (q:string,setResults:(r:Place[])=>void,restrict?:strin
 
                     <input
                     onChange={(e)=>{
-                      setDrop(e.target.value)
-                      searchAddress(e.target.value,setDropSuggestions,pickUpCountry)
+                      const val = e.target.value
+                      setDrop(val)
+                      searchAddress(val, setDropSuggestions, (topMatch) => {
+                        if (!dropLat) {
+                          setDropLat(topMatch.lat)
+                          setDropLon(topMatch.lng)
+                          setDropCountry(topMatch.country || "India")
+                        }
+                      })
                     }}
-                    disabled={!pickUpCountry}
+                    disabled={!pickUp}
                     value={drop}
-                      placeholder={pickUpCountry?"Drop Location":"Select Pick up Location First"}
+                      placeholder={pickUp?"Drop Location":"Select Pick up Location First"}
                       className="flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 outline-none"
                     />
                  
-                 <Navigation size={14} className='text-zinc-300 flex-shrink-0'/>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <motion.button
+                       whileTap={{ scale: 0.88 }}
+                       onClick={() => setPickerMode('drop')}
+                       disabled={!pickUp}
+                       title="Pick Drop on Map"
+                       className="h-8 px-2.5 rounded-xl bg-zinc-900 text-white hover:bg-black disabled:opacity-40 transition-colors flex items-center gap-1.5 text-xs font-bold"
+                      >
+                        <MapPin size={12} />
+                        <span>Map</span>
+                      </motion.button>
+                      <Navigation size={14} className='text-zinc-300'/>
+                    </div>
 
                   </div>
                   <AnimatePresence>
@@ -410,9 +539,7 @@ const searchAddress=async (q:string,setResults:(r:Place[])=>void,restrict?:strin
                  whileTap={{ scale: 0.97 }}
                 whileHover={canContinue ? { scale: 1.02 } : {}}
                 disabled={!canContinue}
-                onClick={()=>{
-                  router.push(`/user/search?pickup=${encodeURIComponent(pickUp)}&drop=${encodeURIComponent(drop)}&vehicle=${vehicle}&mobile=${encodeURIComponent(mobile)}&pickuplat=${pickUpLat}&pickuplon=${pickUpLon}&droplat=${dropLat}&droplon=${dropLon}`)
-                }}
+                onClick={handleContinue}
                 className="w-full h-14 rounded-2xl bg-zinc-900 hover:bg-black disabled:opacity-35 text-white font-black text-sm tracking-wide flex items-center justify-center gap-2.5 transition-colors shadow-lg disabled:shadow-none"
                 
                 >
@@ -429,8 +556,28 @@ const searchAddress=async (q:string,setResults:(r:Place[])=>void,restrict?:strin
 
         </div>
 
-       
-
+        <MapPickerModal
+          open={pickerMode !== null}
+          onClose={() => setPickerMode(null)}
+          title={pickerMode === 'pickup' ? 'Pick Pickup Location' : 'Pick Drop Location'}
+          initialLat={pickerMode === 'pickup' ? (pickUpLat as number) : (dropLat as number)}
+          initialLng={pickerMode === 'pickup' ? (pickUpLon as number) : (dropLon as number)}
+          onConfirm={(addr, lat, lng) => {
+            if (pickerMode === 'pickup') {
+              setPickUp(addr)
+              setPickUpLat(lat)
+              setPickUpLon(lng)
+              setPickUpCountry("India")
+              setPickUpSuggestions([])
+            } else {
+              setDrop(addr)
+              setDropLat(lat)
+              setDropLon(lng)
+              setDropCountry("India")
+              setDropSuggestions([])
+            }
+          }}
+        />
 
       </motion.div>
     </div>

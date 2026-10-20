@@ -1,32 +1,49 @@
-import { a } from 'motion/react-client'
-import React from 'react'
+import React, { useState } from 'react'
 
-function DocPreview({label,url}:any) {
-    const isImage=url?.match(/\.(jpg|jpeg|png|webp)$/i)
-    const isPdf=url?.endsWith(".pdf")
-  return (
-    <div className='bg-gray-50 rounded-2xl border overflow-hidden shadow-sm'>
-      <div className='px-4 py-2 border-b text-sm font-semibold'>
-        {label}
-      </div>
-      <div className='h-52 flex items-center justify-center bg-white'>
-{!url && <span className='text-xs text-gray-400'>Image Not Uploaded</span>}
+function DocPreview({ label, url }: { label: string; url?: string }) {
+    const [imgError, setImgError] = useState(false)
 
-{isImage && <img src={url} className='w-full h-full object-cover'/>}
+    if (!url) {
+        return (
+            <div className='bg-gray-50 rounded-2xl border overflow-hidden shadow-sm'>
+                <div className='px-4 py-2 border-b text-sm font-semibold'>{label}</div>
+                <div className='h-52 flex items-center justify-center bg-white text-xs text-gray-400'>
+                    Image Not Uploaded
+                </div>
+            </div>
+        )
+    }
 
-{isPdf && <iframe src={url} className='w-full h-full'/>}
+    const displayUrl = (url.includes('/image/upload/') && url.toLowerCase().endsWith('.pdf'))
+        ? url.replace(/\.pdf$/i, '.png')
+        : url
 
-      </div>
-      {url && (
-    <a
-    href={url}
-    target="_blank"
-    className="block text-center text-xs py-2 font-medium hover:bg-gray-100"
-    >Open Full Document</a>
-)}
-      
-    </div>
-  )
+    return (
+        <div className='bg-gray-50 rounded-2xl border overflow-hidden shadow-sm flex flex-col justify-between'>
+            <div className='px-4 py-2 border-b text-sm font-semibold'>{label}</div>
+            <div className='h-52 flex items-center justify-center bg-white overflow-hidden relative p-1'>
+                {!imgError ? (
+                    <img 
+                        src={displayUrl} 
+                        alt={label} 
+                        className='w-full h-full object-contain' 
+                        onError={() => setImgError(true)}
+                    />
+                ) : (
+                    <iframe src={displayUrl} className='w-full h-full border-0' title={label} />
+                )}
+            </div>
+            <button
+                type="button"
+                onClick={() => {
+                    window.open(displayUrl, '_blank', 'noopener,noreferrer')
+                }}
+                className="w-full text-center text-xs py-2.5 font-semibold text-blue-600 hover:bg-gray-100 border-t transition cursor-pointer"
+            >
+                Open Full Document ↗
+            </button>
+        </div>
+    )
 }
 
 export default DocPreview

@@ -4,41 +4,39 @@ import User from "@/models/user.model";
 import Vehicle from "@/models/vehicle.model";
 import { NextRequest } from "next/server";
 
-export async function GET(
+export async function POST(
     req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await auth()
         if (!session || !session.user?.email || session.user.role !== "admin") {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         await connectDb()
-        const vehicleId=(await context.params).id
-        const vehicle=await Vehicle.findById(vehicleId)
+        const vehicleId = (await context.params).id
+        const vehicle = await Vehicle.findById(vehicleId)
 
-        if(!vehicle){
+        if (!vehicle) {
             return Response.json(
-                {message:"vehicle not found"},
-                {status:400}
+                { message: "vehicle not found" },
+                { status: 404 }
             )
         }
 
-        vehicle.status="approved"
-        vehicle.rejectionReason=undefined
+        vehicle.status = "approved"
+        vehicle.rejectionReason = undefined
         await vehicle.save()
 
-        const partner=await User.findById(vehicle.owner)
-        if(!partner){
+        const partner = await User.findById(vehicle.owner)
+        if (!partner) {
              return Response.json(
-                {message:"partner not found"},
-                {status:400}
+                { message: "partner not found" },
+                { status: 404 }
             )
         }
-        partner.partnerOnBoardingSteps=7
+        partner.partnerOnBoardingSteps = Math.max(partner.partnerOnBoardingSteps || 0, 6)
         await partner.save()
          return Response.json(
                 vehicle,
@@ -50,5 +48,6 @@ export async function GET(
                 {status:500}
             )
     }
-    
 }
+
+export { POST as GET }

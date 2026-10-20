@@ -10,16 +10,12 @@ export async function POST(req: Request) {
         await connectDb()
         const session = await auth()
         if (!session || !session.user?.email) {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         const user = await User.findOne({ email: session.user.email })
         if (!user) {
-            return Response.json({ message: "user not found" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "user not found" }, { status: 404 })
         }
 
         const { type, number, vehicleModel } = await req.json()
@@ -36,30 +32,31 @@ export async function POST(req: Request) {
             )
         }
         const vehicleNumber = number.toUpperCase()
-       
-
-
 
         let vehicle = await Vehicle.findOne({ owner: user._id })
         if (vehicle) {
+            // C13: When updating, check uniqueness excluding the current vehicle
+            const duplicate = await Vehicle.findOne({ number: vehicleNumber, _id: { $ne: vehicle._id } })
+            if (duplicate) {
+                return Response.json(
+                    { message: "Vehicle number already registered by another partner" },
+                    { status: 400 }
+                )
+            }
             vehicle.type = type
             vehicle.number = vehicleNumber
             vehicle.vehicleModel = vehicleModel
             vehicle.status = "pending"
             await vehicle.save()
-             if(user.partnerOnBoardingSteps<2){
-                user.partnerOnBoardingSteps=2
-                user.partnerStatus="pending"
-                await user.save()
-             }else{
-                user.partnerOnBoardingSteps=3
-                user.partnerStatus="pending"
-                await user.save()
-             }
+            user.partnerOnBoardingSteps = Math.max(user.partnerOnBoardingSteps || 0, 1)
+            if (user.partnerStatus !== "approved") {
+                user.partnerStatus = "pending"
+            }
+            await user.save()
             return Response.json(vehicle, { status: 200 })
         }
 
- const duplicate = await Vehicle.findOne({ number: vehicleNumber })
+        const duplicate = await Vehicle.findOne({ number: vehicleNumber })
         if (duplicate) {
             return Response.json(
                 { message: "Vehicle already registered" }
@@ -68,20 +65,18 @@ export async function POST(req: Request) {
         }
 
         vehicle = await Vehicle.create({
-            owner:user._id,
+            owner: user._id,
             type,
             number: vehicleNumber,
             vehicleModel
         })
 
-
-        if (user.partnerOnBoardingSteps < 1) {
-            user.partnerOnBoardingSteps = 1
-        }
+        user.partnerOnBoardingSteps = Math.max(user.partnerOnBoardingSteps || 0, 1)
         user.role = "partner"
-        user.partnerStatus="pending"
+        if (user.partnerStatus !== "approved") {
+            user.partnerStatus = "pending"
+        }
         await user.save()
-
 
         return Response.json(vehicle, { status: 201 })
 
@@ -94,27 +89,21 @@ export async function POST(req: Request) {
 
 export async function GET(req:NextRequest){
     try {
-         await connectDb()
+        await connectDb()
         const session = await auth()
         if (!session || !session.user?.email) {
-            return Response.json({ message: "unauthorized" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "unauthorized" }, { status: 401 })
         }
 
         const user = await User.findOne({ email: session.user.email })
         if (!user) {
-            return Response.json({ message: "user not found" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "user not found" }, { status: 404 })
         }
         let vehicle = await Vehicle.findOne({ owner: user._id })
         if(vehicle){
             return Response.json(vehicle, { status: 200 })
         }else{
-            return Response.json({ message: "vehicle not found" }
-                , { status: 400 }
-            )
+            return Response.json({ message: "vehicle not found" }, { status: 404 })
         }
 
     } catch (error) {

@@ -14,41 +14,60 @@ export async function POST(req:NextRequest) {
             )
         }
 
-        const partners=await User.find({
-            role:"partner",
-            isOnline:true,
-            partnerStatus:"approved",
-            location:{
-                $near:{
-                    $geometry:{
-                        type:"Point",
-                        coordinates:[longitude,latitude]
-                    },
-                    $maxDistance:10000
+        let partners = []
+        try {
+            partners = await User.find({
+                role: "partner",
+                isOnline: true,
+                partnerStatus: "approved",
+                location: {
+                    $near: {
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [longitude, latitude]
+                        },
+                        $maxDistance: 50000
+                    }
                 }
-            }
-        })
-
-        const partnerIds=partners.map(p=>p._id)
-
-        if(partnerIds.length==0){
-             return NextResponse.json(
-                 [],
-                {status:200}
-            )
+            })
+        } catch (geoError) {
+            console.warn("Geospatial near query warning:", geoError)
         }
 
-        const vehicles=await Vehicle.find({
-            owner:{$in:partnerIds},
-            type:vehicleType,
-            status:"approved",
-            isActive:true
-        }).lean()
+        if (partners.length === 0) {
+            partners = await User.find({
+                role: "partner",
+                isOnline: true,
+                partnerStatus: "approved"
+            })
+        }
 
-       return NextResponse.json(
-                vehicles,
-                {status:200}
-            ) 
+        if (partners.length === 0) {
+            partners = await User.find({
+                role: "partner",
+                partnerStatus: "approved"
+            })
+        }
+
+        const partnerIds = partners.map(p => p._id)
+
+        if (partnerIds.length === 0) {
+            return NextResponse.json([], { status: 200 })
+        }
+
+        const vehicleQuery: any = {
+            owner: { $in: partnerIds },
+            status: "approved",
+            isActive: true
+        }
+
+        if (vehicleType && typeof vehicleType === "string" && vehicleType.trim() !== "") {
+            vehicleQuery.type = vehicleType.trim()
+        }
+
+        const vehicles = await Vehicle.find(vehicleQuery).lean()
+
+        return NextResponse.json(vehicles, { status: 200 })
 
 
     } catch (error) {

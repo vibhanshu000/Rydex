@@ -4,7 +4,6 @@ import { motion } from "motion/react"
 import { ArrowLeft, BadgeCheck, CheckCircle, CircleDashed, CreditCard, Landmark, Phone } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import axios from 'axios'
-import { p } from 'motion/react-client'
 const IFSC_REGEX=/^[A-Z]{4}0[A-Z0-9]{6}$/
 function page() {
     const router = useRouter()
