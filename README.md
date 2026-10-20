@@ -1,5 +1,12 @@
 # 🚗 Rydex — On-Demand Multi-Vehicle Booking & Logistics Platform
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-rydex--xi.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://rydex-xi.vercel.app/)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/vibhanshu000/Rydex)
+
+🌐 **Live Website**: [https://rydex-xi.vercel.app](https://rydex-xi.vercel.app/)
+
+---
+
 **Rydex** is an end-to-end, full-stack vehicle booking and logistics platform engineered to handle everything from daily personal commutes to heavy commercial freight. Built with Next.js 16, Socket.IO, MongoDB, and modern real-time WebRTC/geospatial technologies.
 
 ---
